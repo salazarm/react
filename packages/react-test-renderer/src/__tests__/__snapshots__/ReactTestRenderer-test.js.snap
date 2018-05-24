@@ -1,0 +1,21 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ReactTestRenderer should support ReactDOM portal 1`] = `
+<div>
+  Object {
+    "children": Array [
+      Object {
+        "children": Array [
+          "Hi!",
+        ],
+        "props": Object {
+          "children": "Hi!",
+        },
+        "type": "Symbol(react.element)",
+      },
+    ],
+    "props": Object {},
+    "type": "Symbol(react.portal)",
+  }
+</div>
+`;
