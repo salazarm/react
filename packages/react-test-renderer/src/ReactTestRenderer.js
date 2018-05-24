@@ -73,14 +73,18 @@ function toJSON(inst: Instance | TextInstance): ReactTestRendererNode {
       const {children, ...props} = inst.props;
       /* eslint-enable */
       let renderedChildren = null;
-      if (inst.children && inst.children.length) {
-        renderedChildren = inst.children.map(toJSON);
-      } else if (inst.props != null && inst.props.children != null) {
-        // The element's children are from another renderer (e.g. ReactDOM.createPortal)
+      if (inst.props != null && inst.props.children != null) {
+        // At least some of this element's children are from another renderer
+        // (e.g. ReactDOM.createPortal)
+        // In this case, treat all children as potentially from the other renderer.
+        // If we don't, the JSON representation may contain overlaps.
         renderedChildren = React.Children.toArray(inst.props.children).map(
           reactElementToJSON,
         );
+      } else if (inst.children && inst.children.length) {
+        renderedChildren = inst.children.map(toJSON);
       }
+
       const json: ReactTestRendererJSON = {
         type: inst.type,
         props: props,
@@ -97,10 +101,14 @@ function toJSON(inst: Instance | TextInstance): ReactTestRendererNode {
 
 function reactElementToJSON(inst: any): ReactTestRendererNode {
   if (typeof inst === 'object') {
+    /* eslint-disable no-unused-vars */
+    // We don't include the `children` prop in JSON.
+    // Instead, we will include the actual rendered children.
+    const {children, ...props} = inst.props != null ? inst.props : {};
     const type = typeOf(inst);
     return {
       type: type == null ? 'unknown' : type.toString(),
-      props: inst.props || {},
+      props,
       children: React.Children.toArray(
         inst.children || inst.props.children,
       ).map(reactElementToJSON),
