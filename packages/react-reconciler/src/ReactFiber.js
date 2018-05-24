@@ -16,7 +16,10 @@ import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {UpdateQueue} from './ReactUpdateQueue';
 
 import invariant from 'fbjs/lib/invariant';
-import {enableProfilerTimer} from 'shared/ReactFeatureFlags';
+import {
+  convertPortalsToFragments,
+  enableProfilerTimer,
+} from 'shared/ReactFeatureFlags';
 import {NoEffect} from 'shared/ReactTypeOfSideEffect';
 import {
   IndeterminateComponent,
@@ -513,7 +516,8 @@ export function createFiberFromPortal(
   expirationTime: ExpirationTime,
 ): Fiber {
   const pendingProps = portal.children !== null ? portal.children : [];
-  const fiber = createFiber(HostPortal, pendingProps, portal.key, mode);
+  const tag = convertPortalsToFragments ? Fragment : HostPortal;
+  const fiber = createFiber(tag, pendingProps, portal.key, mode);
   fiber.expirationTime = expirationTime;
   fiber.stateNode = {
     containerInfo: portal.containerInfo,

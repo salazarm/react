@@ -1,0 +1,20 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ReactTestRenderer should support ReactDOM.createPortal 1`] = `
+<div>
+  <span>
+    ReactDOM portal
+  </span>
+</div>
+`;
+
+exports[`ReactTestRenderer should support ReactDOM.createPortal 2`] = `
+<div>
+  <span>
+    ReactTestRenderer span
+  </span>
+  <span>
+    ReactDOM portal
+  </span>
+</div>
+`;

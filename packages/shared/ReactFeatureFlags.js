@@ -42,6 +42,10 @@ export const enableProfilerTimer = __DEV__;
 // Fires getDerivedStateFromProps for state *or* props changes
 export const fireGetDerivedStateFromPropsOnStateUpdates = true;
 
+// Return a fragment from createPortal()
+// This enables TestRenderer to consume portals from e.g. ReactDOM
+export const convertPortalsToFragments = false;
+
 // Only used in www builds.
 export function addUserTimingListener() {
   invariant(false, 'Not implemented.');
