@@ -17,20 +17,10 @@ jest.resetModules();
 const ReactTestRenderer = require('react-test-renderer');
 
 describe('ReactTestRenderer', () => {
-  it('should support ReactDOM portal usage', () => {
+  it('should support ReactDOM portal', () => {
     const container = document.createElement('div');
-    let rendered = ReactTestRenderer.create(
-      <div>
-        {ReactDOM.createPortal(<span>Rendered by ReactDOM</span>, container)}
-      </div>,
-    );
-    expect(rendered.toJSON()).toMatchSnapshot();
-
-    rendered.update(
-      <div>
-        <span>Rendered by ReactTestRenderer</span>
-        {ReactDOM.createPortal(<span>Rendered by ReactDOM</span>, container)}
-      </div>,
+    const rendered = ReactTestRenderer.create(
+      <div>{ReactDOM.createPortal(<span>Hi!</span>, container)}</div>,
     );
     expect(rendered.toJSON()).toMatchSnapshot();
   });

@@ -86,11 +86,6 @@ export function removeChild(
   parentInstance: Instance | Container,
   child: Instance | TextInstance,
 ): void {
-  // Detect and ignore ReactDOM.createPortal() usage.
-  // Test renderer's toJSON() method knows how to handle this case.
-  if (parentInstance instanceof HTMLElement) {
-    return;
-  }
   const index = parentInstance.children.indexOf(child);
   parentInstance.children.splice(index, 1);
 }
