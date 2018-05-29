@@ -9,7 +9,6 @@
 
 'use strict';
 
-const React = require('react');
 const ReactDOM = require('react-dom');
 
 // Isolate test renderer.
@@ -17,11 +16,12 @@ jest.resetModules();
 const ReactTestRenderer = require('react-test-renderer');
 
 describe('ReactTestRenderer', () => {
-  it('should support ReactDOM portal', () => {
+  it('should warn if used to render a ReactDOM portal', () => {
     const container = document.createElement('div');
-    const rendered = ReactTestRenderer.create(
-      <div>{ReactDOM.createPortal(<span>Hi!</span>, container)}</div>,
-    );
-    expect(rendered.toJSON()).toMatchSnapshot();
+    expect(() => {
+      expect(() => {
+        ReactTestRenderer.create(ReactDOM.createPortal('foo', container));
+      }).toThrow();
+    }).toWarnDev('An invalid container has been provided.');
   });
 });

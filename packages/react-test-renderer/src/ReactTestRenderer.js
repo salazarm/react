@@ -11,8 +11,6 @@ import type {Fiber} from 'react-reconciler/src/ReactFiber';
 import type {FiberRoot} from 'react-reconciler/src/ReactFiberRoot';
 import type {Instance, TextInstance} from './ReactTestHostConfig';
 
-import React from 'react';
-import {isElement, isValidElementType, typeOf} from 'react-is';
 import * as TestRenderer from 'react-reconciler/inline.test';
 import {batchedUpdates} from 'events/ReactGenericBatching';
 import {findCurrentFiberUsingSlowPath} from 'react-reconciler/reflection';
@@ -75,11 +73,6 @@ function toJSON(inst: Instance | TextInstance): ReactTestRendererNode {
       let renderedChildren = null;
       if (inst.children && inst.children.length) {
         renderedChildren = inst.children.map(toJSON);
-      } else if (inst.props != null && inst.props.children != null) {
-        // TODO
-        renderedChildren = React.Children.toArray(inst.props.children).map(
-          toJSON,
-        );
       }
       const json: ReactTestRendererJSON = {
         type: inst.type,
@@ -91,25 +84,7 @@ function toJSON(inst: Instance | TextInstance): ReactTestRendererNode {
       });
       return json;
     default:
-      if (isElement(inst) || isValidElementType(inst)) {
-        return reactDOMElementToJSON(inst);
-      }
       throw new Error(`Unexpected node type in toJSON: ${inst.tag}`);
-  }
-}
-
-function reactDOMElementToJSON(inst: any): ReactTestRendererNode {
-  if (typeof inst === 'object') {
-    const type = typeOf(inst);
-    return {
-      type: type == null ? 'unknown' : type.toString(),
-      props: inst.props || {},
-      children: React.Children.toArray(
-        inst.children || inst.props.children,
-      ).map(reactDOMElementToJSON),
-    };
-  } else {
-    return inst;
   }
 }
 

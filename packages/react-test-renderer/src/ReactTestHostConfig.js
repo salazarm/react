@@ -8,6 +8,7 @@
  */
 
 import emptyObject from 'fbjs/lib/emptyObject';
+import warning from 'fbjs/lib/warning';
 
 import * as TestRendererScheduling from './ReactTestRendererScheduling';
 
@@ -57,10 +58,14 @@ export function appendChild(
   parentInstance: Instance | Container,
   child: Instance | TextInstance,
 ): void {
-  // Detect and ignore ReactDOM.createPortal() usage.
-  // Test renderer's toJSON() method knows how to handle this case.
-  if (parentInstance instanceof HTMLElement) {
-    return;
+  if (__DEV__) {
+    warning(
+      typeof parentInstance.children.indexOf === 'function',
+      'An invalid container has been provided. ' +
+        'This may indicate that another render is being used in addition to the test renderer. ' +
+        '(For example, ReactDOM.createPortal inside of a ReactTestRenderer tree.) ' +
+        'This is not supported.',
+    );
   }
   const index = parentInstance.children.indexOf(child);
   if (index !== -1) {
