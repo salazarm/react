@@ -12,6 +12,7 @@ import {
   REACT_CONTEXT_TYPE,
   REACT_FORWARD_REF_TYPE,
   REACT_FRAGMENT_TYPE,
+  REACT_PORTAL_TYPE,
   REACT_PROFILER_TYPE,
   REACT_PROVIDER_TYPE,
   REACT_STRICT_MODE_TYPE,
@@ -32,6 +33,7 @@ export default function isValidElementType(type: mixed) {
       type !== null &&
       (type.$$typeof === REACT_PROVIDER_TYPE ||
         type.$$typeof === REACT_CONTEXT_TYPE ||
-        type.$$typeof === REACT_FORWARD_REF_TYPE))
+        type.$$typeof === REACT_FORWARD_REF_TYPE ||
+        type.$$typeof === REACT_PORTAL_TYPE))
   );
 }
