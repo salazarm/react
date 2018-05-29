@@ -22,7 +22,6 @@ export const warnAboutLegacyContextAPI = false;
 export const replayFailedUnitOfWorkWithInvokeGuardedCallback = __DEV__;
 export const enableProfilerTimer = false;
 export const fireGetDerivedStateFromPropsOnStateUpdates = true;
-export const convertPortalsToFragments = false;
 
 // Only used in www builds.
 export function addUserTimingListener() {

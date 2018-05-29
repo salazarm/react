@@ -24,7 +24,6 @@ export const {
 
 // The rest of the flags are static for better dead code elimination.
 export const warnAboutLegacyContextAPI = __DEV__;
-export const convertPortalsToFragments = false;
 
 // In www, we have experimental support for gathering data
 // from User Timing API calls in production. By default, we

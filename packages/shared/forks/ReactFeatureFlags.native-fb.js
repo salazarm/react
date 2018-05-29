@@ -27,7 +27,6 @@ export const {
 // The rest of the flags are static for better dead code elimination.
 export const enableUserTimingAPI = __DEV__;
 export const warnAboutLegacyContextAPI = __DEV__;
-export const convertPortalsToFragments = false;
 
 // Only used in www builds.
 export function addUserTimingListener() {

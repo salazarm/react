@@ -11,6 +11,8 @@ import type {Fiber} from 'react-reconciler/src/ReactFiber';
 import type {FiberRoot} from 'react-reconciler/src/ReactFiberRoot';
 import type {Instance, TextInstance} from './ReactTestHostConfig';
 
+import React from 'react';
+import {typeOf} from 'react-is';
 import * as TestRenderer from 'react-reconciler/inline.test';
 import {batchedUpdates} from 'events/ReactGenericBatching';
 import {findCurrentFiberUsingSlowPath} from 'react-reconciler/reflection';
@@ -71,7 +73,15 @@ function toJSON(inst: Instance | TextInstance): ReactTestRendererNode {
       const {children, ...props} = inst.props;
       /* eslint-enable */
       let renderedChildren = null;
-      if (inst.children && inst.children.length) {
+      if (inst.props != null && inst.props.children != null) {
+        // At least some of this element's children are from another renderer
+        // (e.g. ReactDOM.createPortal)
+        // In this case, treat all children as potentially from the other renderer.
+        // If we don't, the JSON representation may contain overlaps.
+        renderedChildren = React.Children.toArray(inst.props.children).map(
+          reactElementToJSON,
+        );
+      } else if (inst.children && inst.children.length) {
         renderedChildren = inst.children.map(toJSON);
       }
 
@@ -86,6 +96,25 @@ function toJSON(inst: Instance | TextInstance): ReactTestRendererNode {
       return json;
     default:
       throw new Error(`Unexpected node type in toJSON: ${inst.tag}`);
+  }
+}
+
+function reactElementToJSON(inst: any): ReactTestRendererNode {
+  if (typeof inst === 'object') {
+    /* eslint-disable no-unused-vars */
+    // We don't include the `children` prop in JSON.
+    // Instead, we will include the actual rendered children.
+    const {children, ...props} = inst.props != null ? inst.props : {};
+    const type = typeOf(inst);
+    return {
+      type: type == null ? 'unknown' : type.toString(),
+      props,
+      children: React.Children.toArray(
+        inst.children || inst.props.children,
+      ).map(reactElementToJSON),
+    };
+  } else {
+    return inst;
   }
 }
 

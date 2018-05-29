@@ -14,25 +14,22 @@ const ReactDOM = require('react-dom');
 
 // Isolate test renderer.
 jest.resetModules();
-jest.mock('shared/ReactFeatureFlags', () =>
-  require('shared/forks/ReactFeatureFlags.test-renderer'),
-);
 const ReactTestRenderer = require('react-test-renderer');
 
 describe('ReactTestRenderer', () => {
-  it('should support ReactDOM.createPortal', () => {
+  it('should support ReactDOM portal usage', () => {
     const container = document.createElement('div');
     let rendered = ReactTestRenderer.create(
       <div>
-        {ReactDOM.createPortal(<span>ReactDOM portal</span>, container)}
+        {ReactDOM.createPortal(<span>Rendered by ReactDOM</span>, container)}
       </div>,
     );
     expect(rendered.toJSON()).toMatchSnapshot();
 
     rendered.update(
       <div>
-        <span>ReactTestRenderer span</span>
-        {ReactDOM.createPortal(<span>ReactDOM portal</span>, container)}
+        <span>Rendered by ReactTestRenderer</span>
+        {ReactDOM.createPortal(<span>Rendered by ReactDOM</span>, container)}
       </div>,
     );
     expect(rendered.toJSON()).toMatchSnapshot();
