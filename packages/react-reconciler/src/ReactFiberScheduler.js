@@ -664,6 +664,7 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
 
   if (enableProfilerTimer) {
     if (__DEV__) {
+console.log('>>> commitRoot() checkActualRenderTimeStackEmpty()')
       checkActualRenderTimeStackEmpty();
     }
     resetActualRenderTimer();
@@ -1086,6 +1087,9 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
       // Reset the DEV fiber stack in case we're profiling roots.
       // (We do this for profiling bulds when DevTools is detected.)
       resetActualRenderTimerStackAfterFatalErrorInDev();
+
+      // TODO Maybe record host root time instead.
+      // This might be more accurate over multi-renders?
     }
     // `nextRoot` points to the in-progress root. A non-null value indicates
     // that we're in the middle of an async render. Set it to null to indicate
@@ -1130,6 +1134,7 @@ function renderRoot(root: FiberRoot, isYieldy: boolean): void {
       );
     }
   } else {
+console.log(`###### renderRoot() ${getComponentName(nextUnitOfWork)} yielded`);
     // There's still remaining async work in this tree, but we ran out of time
     // in the current frame. Yield back to the renderer. Unless we're
     // interrupted by a higher priority update, we'll continue later from where
@@ -1839,12 +1844,17 @@ function performWorkOnRoot(
     let finishedWork = root.finishedWork;
     if (finishedWork !== null) {
       // This root is already complete. We can commit it.
+// Could it be that we yield a yieldy root,
+// Then sync complete a non-yieldy root,
+// And that causes the problem.
+console.log(`>>>>>> performWorkOnRoot() completeRoot() [1]`); // THIS ALWAYS SEEMS TO BE THE LAST completeRoot() PATH BEFORE THE FAILURE AND THE TESTS NEVER CALL IT EITHER
       completeRoot(root, finishedWork, expirationTime);
     } else {
       renderRoot(root, false);
       finishedWork = root.finishedWork;
       if (finishedWork !== null) {
         // We've completed the root. Commit it.
+console.log(`>>>>>> performWorkOnRoot() completeRoot() [2]`);
         completeRoot(root, finishedWork, expirationTime);
       }
     }
@@ -1853,6 +1863,7 @@ function performWorkOnRoot(
     let finishedWork = root.finishedWork;
     if (finishedWork !== null) {
       // This root is already complete. We can commit it.
+console.log(`>>>>>> performWorkOnRoot() completeRoot() [3]`);
       completeRoot(root, finishedWork, expirationTime);
     } else {
       renderRoot(root, true);
@@ -1862,6 +1873,7 @@ function performWorkOnRoot(
         // before committing.
         if (!shouldYield()) {
           // Still time left. Commit the root.
+console.log(`>>>>>> performWorkOnRoot() completeRoot() [4]`);
           completeRoot(root, finishedWork, expirationTime);
         } else {
           // There's no time left. Mark this root as complete. We'll come
@@ -1871,6 +1883,7 @@ function performWorkOnRoot(
           if (enableProfilerTimer) {
             // If we didn't finish, pause the "actual" render timer.
             // We'll restart it when we resume work.
+console.log(`>>>>>> performWorkOnRoot() pauseActualRenderTimerIfRunning()`);
             pauseActualRenderTimerIfRunning();
           }
         }

@@ -170,7 +170,7 @@ describe('ReactDOMRoot', () => {
   it('can defer a commit by batching it', () => {
     const root = ReactDOM.unstable_createRoot(container);
     const batch = root.createBatch();
-    batch.render(<div>Hi</div>);
+    batch.render(<BatchComponent />);
     // Hasn't committed yet
     expect(container.textContent).toEqual('');
     // Commit
@@ -178,38 +178,33 @@ describe('ReactDOMRoot', () => {
     expect(container.textContent).toEqual('Hi');
   });
 
-  it('applies setState in componentDidMount synchronously in a batch', done => {
-    class App extends React.Component {
-      state = {mounted: false};
-      componentDidMount() {
-        this.setState({
-          mounted: true,
-        });
-      }
-      render() {
-        return this.state.mounted ? 'Hi' : 'Bye';
-      }
-    }
+  fit('applies setState in componentDidMount synchronously in a batch', done => {
+    const BatchComponent = jest.fn(() => <div>Hi</div>);
 
     const root = ReactDOM.unstable_createRoot(container);
     const batch = root.createBatch();
+console.log('[TEST] render()');
     batch.render(
       <AsyncMode>
-        <App />
+        <BatchComponent />
       </AsyncMode>,
     );
 
+expect(BatchComponent).not.toHaveBeenCalled();
     jest.runAllTimers();
+expect(BatchComponent).toHaveBeenCalled();
 
     // Hasn't updated yet
     expect(container.textContent).toEqual('');
 
     let ops = [];
     batch.then(() => {
+console.log('[TEST] then()');
       // Still hasn't updated
       ops.push(container.textContent);
 
       // Should synchronously commit
+console.log('[TEST] commit()');
       batch.commit();
       ops.push(container.textContent);
 

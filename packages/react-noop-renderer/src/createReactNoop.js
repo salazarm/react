@@ -369,6 +369,7 @@ function createReactNoop(reconciler: Function, useMutation: boolean) {
         root = NoopRenderer.createContainer(container, true, false);
         roots.set(rootID, root);
       }
+console.log('[NOOP] roots', roots.size)
       NoopRenderer.updateContainer(element, root, null, callback);
     },
 

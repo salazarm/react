@@ -114,7 +114,11 @@ describe('ReactProfiler DevTools integration', () => {
       ReactTestRenderer.create(<div ref="this-will-cause-an-error" />);
     }).toThrow();
 
+    // TODO Ellapse time in between renders
+
     // But this should render correctly, if the profiler's fiber stack has been reset.
     ReactTestRenderer.create(<div />);
+
+    // TODO Record host root time in this test to verify that it's not way off
   });
 });

@@ -319,6 +319,7 @@ function unwindWork(
 ) {
   if (enableProfilerTimer) {
     if (workInProgress.mode & ProfileMode) {
+console.log(`unwindWork() ${require('shared/getComponentName').default(workInProgress)}`);
       recordElapsedActualRenderTime(workInProgress);
     }
   }
@@ -369,6 +370,7 @@ function unwindWork(
 function unwindInterruptedWork(interruptedWork: Fiber) {
   if (enableProfilerTimer) {
     if (interruptedWork.mode & ProfileMode) {
+console.log(`unwindInterruptedWork() ${require('shared/getComponentName').default(interruptedWork)}`);
       // Resume in case we're picking up on work that was paused.
       resumeActualRenderTimerIfPaused();
       recordElapsedActualRenderTime(interruptedWork);

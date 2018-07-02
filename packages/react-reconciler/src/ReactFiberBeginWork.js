@@ -1130,6 +1130,7 @@ function beginWork(
 ): Fiber | null {
   if (enableProfilerTimer) {
     if (workInProgress.mode & ProfileMode) {
+console.log(`beginWork() ${getComponentName(workInProgress)}`);
       markActualRenderTimeStarted(workInProgress);
     }
   }

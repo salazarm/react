@@ -10,15 +10,23 @@
 'use strict';
 
 let React;
+let ReactDOM;
 let ReactFeatureFlags;
 let ReactNoop;
 let ReactTestRenderer;
 
+let AsyncMode, Fragment, Profiler;
+
 function loadModules({
   enableProfilerTimer = true,
+  rendererToLoad = 'test',
   replayFailedUnitOfWorkWithInvokeGuardedCallback = false,
-  useNoopRenderer = false,
 } = {}) {
+  jest.mock('react-reconciler/src/ReactFiberDevToolsHook', () => ({
+    injectInternals: () => {},
+    isDevToolsPresent: false
+  }))
+
   ReactFeatureFlags = require('shared/ReactFeatureFlags');
   ReactFeatureFlags.debugRenderPhaseSideEffects = false;
   ReactFeatureFlags.debugRenderPhaseSideEffectsForStrictMode = false;
@@ -27,10 +35,21 @@ function loadModules({
   ReactFeatureFlags.replayFailedUnitOfWorkWithInvokeGuardedCallback = replayFailedUnitOfWorkWithInvokeGuardedCallback;
   React = require('react');
 
-  if (useNoopRenderer) {
-    ReactNoop = require('react-noop-renderer');
-  } else {
-    ReactTestRenderer = require('react-test-renderer');
+  AsyncMode = React.unstable_AsyncMode;
+  Fragment = React.Fragment;
+  Profiler = React.unstable_Profiler;
+
+  switch (rendererToLoad) {
+    case 'dom':
+      ReactDOM = require('react-dom');
+      break;
+    case 'noop':
+      ReactNoop = require('react-noop-renderer');
+      break;
+    case 'test':
+    default:
+      ReactTestRenderer = require('react-test-renderer');
+      break;
   }
 }
 
@@ -51,7 +70,7 @@ describe('Profiler', () => {
         if (__DEV__) {
           it('should warn if required params are missing', () => {
             expect(() => {
-              ReactTestRenderer.create(<React.unstable_Profiler />);
+              ReactTestRenderer.create(<Profiler />);
             }).toThrow(
               'Profiler must specify an "id" string and "onRender" function as props',
             );
@@ -62,7 +81,7 @@ describe('Profiler', () => {
           // As root
           expect(
             ReactTestRenderer.create(
-              <React.unstable_Profiler id="label" onRender={jest.fn()} />,
+              <Profiler id="label" onRender={jest.fn()} />,
             ).toJSON(),
           ).toMatchSnapshot();
 
@@ -70,7 +89,7 @@ describe('Profiler', () => {
           expect(
             ReactTestRenderer.create(
               <div>
-                <React.unstable_Profiler id="label" onRender={jest.fn()} />
+                <Profiler id="label" onRender={jest.fn()} />
               </div>,
             ).toJSON(),
           ).toMatchSnapshot();
@@ -81,10 +100,10 @@ describe('Profiler', () => {
           const renderer = ReactTestRenderer.create(
             <div>
               <span>outside span</span>
-              <React.unstable_Profiler id="label" onRender={jest.fn()}>
+              <Profiler id="label" onRender={jest.fn()}>
                 <span>inside span</span>
                 <FunctionalComponent label="functional component" />
-              </React.unstable_Profiler>
+              </Profiler>
             </div>,
           );
           expect(renderer.toJSON()).toMatchSnapshot();
@@ -98,13 +117,13 @@ describe('Profiler', () => {
             }
           }
           const renderer = ReactTestRenderer.create(
-            <React.unstable_Profiler id="outer" onRender={jest.fn()}>
+            <Profiler id="outer" onRender={jest.fn()}>
               <FunctionalComponent label="outer functional component" />
-              <React.unstable_Profiler id="inner" onRender={jest.fn()}>
+              <Profiler id="inner" onRender={jest.fn()}>
                 <ClassComponent label="inner class component" />
                 <span>inner span</span>
-              </React.unstable_Profiler>
-            </React.unstable_Profiler>,
+              </Profiler>
+            </Profiler>,
           );
           expect(renderer.toJSON()).toMatchSnapshot();
         });
@@ -159,10 +178,10 @@ describe('Profiler', () => {
       };
 
       const renderer = ReactTestRenderer.create(
-        <React.unstable_Profiler id="test" onRender={callback}>
+        <Profiler id="test" onRender={callback}>
           <Yield value="first" />
           <Yield value="last" />
-        </React.unstable_Profiler>,
+        </Profiler>,
         {
           unstable_isAsync: true,
         },
@@ -196,9 +215,9 @@ describe('Profiler', () => {
       advanceTimeBy(5); // 0 -> 5
 
       const renderer = ReactTestRenderer.create(
-        <React.unstable_Profiler id="test" onRender={callback}>
+        <Profiler id="test" onRender={callback}>
           <AdvanceTime />
-        </React.unstable_Profiler>,
+        </Profiler>,
       );
 
       expect(callback).toHaveBeenCalledTimes(1);
@@ -218,9 +237,9 @@ describe('Profiler', () => {
       advanceTimeBy(20); // 15 -> 35
 
       renderer.update(
-        <React.unstable_Profiler id="test" onRender={callback}>
+        <Profiler id="test" onRender={callback}>
           <AdvanceTime />
-        </React.unstable_Profiler>,
+        </Profiler>,
       );
 
       expect(callback).toHaveBeenCalledTimes(1);
@@ -240,9 +259,9 @@ describe('Profiler', () => {
       advanceTimeBy(20); // 45 -> 65
 
       renderer.update(
-        <React.unstable_Profiler id="test" onRender={callback}>
+        <Profiler id="test" onRender={callback}>
           <AdvanceTime byAmount={4} />
-        </React.unstable_Profiler>,
+        </Profiler>,
       );
 
       expect(callback).toHaveBeenCalledTimes(1);
@@ -264,15 +283,15 @@ describe('Profiler', () => {
       advanceTimeBy(5); // 0 -> 5
 
       ReactTestRenderer.create(
-        <React.Fragment>
-          <React.unstable_Profiler id="parent" onRender={callback}>
+        <Fragment>
+          <Profiler id="parent" onRender={callback}>
             <AdvanceTime byAmount={10}>
-              <React.unstable_Profiler id="child" onRender={callback}>
+              <Profiler id="child" onRender={callback}>
                 <AdvanceTime byAmount={20} />
-              </React.unstable_Profiler>
+              </Profiler>
             </AdvanceTime>
-          </React.unstable_Profiler>
-        </React.Fragment>,
+          </Profiler>
+        </Fragment>,
       );
 
       expect(callback).toHaveBeenCalledTimes(2);
@@ -299,14 +318,14 @@ describe('Profiler', () => {
       advanceTimeBy(5); // 0 -> 5
 
       ReactTestRenderer.create(
-        <React.Fragment>
-          <React.unstable_Profiler id="first" onRender={callback}>
+        <Fragment>
+          <Profiler id="first" onRender={callback}>
             <AdvanceTime byAmount={20} />
-          </React.unstable_Profiler>
-          <React.unstable_Profiler id="second" onRender={callback}>
+          </Profiler>
+          <Profiler id="second" onRender={callback}>
             <AdvanceTime byAmount={5} />
-          </React.unstable_Profiler>
-        </React.Fragment>,
+          </Profiler>
+        </Fragment>,
       );
 
       expect(callback).toHaveBeenCalledTimes(2);
@@ -332,13 +351,13 @@ describe('Profiler', () => {
       advanceTimeBy(5); // 0 -> 5
 
       ReactTestRenderer.create(
-        <React.Fragment>
+        <Fragment>
           <AdvanceTime byAmount={20} />
-          <React.unstable_Profiler id="test" onRender={callback}>
+          <Profiler id="test" onRender={callback}>
             <AdvanceTime byAmount={5} />
-          </React.unstable_Profiler>
+          </Profiler>
           <AdvanceTime byAmount={20} />
-        </React.Fragment>,
+        </Fragment>,
       );
 
       expect(callback).toHaveBeenCalledTimes(1);
@@ -370,17 +389,17 @@ describe('Profiler', () => {
       }
 
       const renderer = ReactTestRenderer.create(
-        <React.unstable_Profiler id="outer" onRender={callback}>
+        <Profiler id="outer" onRender={callback}>
           <Updater>
-            <React.unstable_Profiler id="middle" onRender={callback}>
+            <Profiler id="middle" onRender={callback}>
               <Pure>
-                <React.unstable_Profiler id="inner" onRender={callback}>
+                <Profiler id="inner" onRender={callback}>
                   <div />
-                </React.unstable_Profiler>
+                </Profiler>
               </Pure>
-            </React.unstable_Profiler>
+            </Profiler>
           </Updater>
-        </React.unstable_Profiler>,
+        </Profiler>,
       );
 
       // All profile callbacks are called for initial render
@@ -407,11 +426,11 @@ describe('Profiler', () => {
       advanceTimeBy(5); // 0 -> 5
 
       const renderer = ReactTestRenderer.create(
-        <React.unstable_Profiler id="test" onRender={callback}>
+        <Profiler id="test" onRender={callback}>
           <AdvanceTime byAmount={10}>
             <AdvanceTime byAmount={10} shouldComponentUpdate={false} />
           </AdvanceTime>
-        </React.unstable_Profiler>,
+        </Profiler>,
       );
 
       expect(callback).toHaveBeenCalledTimes(1);
@@ -419,11 +438,11 @@ describe('Profiler', () => {
       advanceTimeBy(30); // 25 -> 55
 
       renderer.update(
-        <React.unstable_Profiler id="test" onRender={callback}>
+        <Profiler id="test" onRender={callback}>
           <AdvanceTime byAmount={10}>
             <AdvanceTime byAmount={10} shouldComponentUpdate={false} />
           </AdvanceTime>
-        </React.unstable_Profiler>,
+        </Profiler>,
       );
 
       expect(callback).toHaveBeenCalledTimes(2);
@@ -465,17 +484,17 @@ describe('Profiler', () => {
       advanceTimeBy(5); // 0 -> 5
 
       const renderer = ReactTestRenderer.create(
-        <React.unstable_Profiler id="test" onRender={callback}>
+        <Profiler id="test" onRender={callback}>
           <WithLifecycles />
-        </React.unstable_Profiler>,
+        </Profiler>,
       );
 
       advanceTimeBy(15); // 13 -> 28
 
       renderer.update(
-        <React.unstable_Profiler id="test" onRender={callback}>
+        <Profiler id="test" onRender={callback}>
           <WithLifecycles />
-        </React.unstable_Profiler>,
+        </Profiler>,
       );
 
       expect(callback).toHaveBeenCalledTimes(2);
@@ -509,10 +528,10 @@ describe('Profiler', () => {
 
         // Render partially, but run out of time before completing.
         const renderer = ReactTestRenderer.create(
-          <React.unstable_Profiler id="test" onRender={callback}>
+          <Profiler id="test" onRender={callback}>
             <Yield renderTime={2} />
             <Yield renderTime={3} />
-          </React.unstable_Profiler>,
+          </Profiler>,
           {unstable_isAsync: true},
         );
         expect(renderer.unstable_flushThrough(['Yield:2'])).toEqual([
@@ -546,13 +565,13 @@ describe('Profiler', () => {
         // Render partially, but don't finish.
         // This partial render should take 5ms of simulated time.
         const renderer = ReactTestRenderer.create(
-          <React.unstable_Profiler id="outer" onRender={callback}>
+          <Profiler id="outer" onRender={callback}>
             <Yield renderTime={5} />
             <Yield renderTime={10} />
-            <React.unstable_Profiler id="inner" onRender={callback}>
+            <Profiler id="inner" onRender={callback}>
               <Yield renderTime={17} />
-            </React.unstable_Profiler>
-          </React.unstable_Profiler>,
+            </Profiler>
+          </Profiler>,
           {unstable_isAsync: true},
         );
         expect(renderer.unstable_flushThrough(['Yield:5'])).toEqual([
@@ -598,10 +617,10 @@ describe('Profiler', () => {
         // Render a partially update, but don't finish.
         // This partial render should take 10ms of simulated time.
         const renderer = ReactTestRenderer.create(
-          <React.unstable_Profiler id="test" onRender={callback}>
+          <Profiler id="test" onRender={callback}>
             <Yield renderTime={10} />
             <Yield renderTime={20} />
-          </React.unstable_Profiler>,
+          </Profiler>,
           {unstable_isAsync: true},
         );
         expect(renderer.unstable_flushThrough(['Yield:10'])).toEqual([
@@ -617,9 +636,9 @@ describe('Profiler', () => {
         expect(
           renderer.unstable_flushSync(() => {
             renderer.update(
-              <React.unstable_Profiler id="test" onRender={callback}>
+              <Profiler id="test" onRender={callback}>
                 <Yield renderTime={5} />
-              </React.unstable_Profiler>,
+              </Profiler>,
             );
           }),
         ).toEqual(['Yield:5']);
@@ -652,10 +671,10 @@ describe('Profiler', () => {
         advanceTimeBy(5); // 0 -> 5
 
         const renderer = ReactTestRenderer.create(
-          <React.unstable_Profiler id="test" onRender={callback}>
+          <Profiler id="test" onRender={callback}>
             <Yield renderTime={6} />
             <Yield renderTime={15} />
-          </React.unstable_Profiler>,
+          </Profiler>,
           {unstable_isAsync: true},
         );
 
@@ -676,11 +695,11 @@ describe('Profiler', () => {
         // Render a partially update, but don't finish.
         // This partial render should take 3ms of simulated time.
         renderer.update(
-          <React.unstable_Profiler id="test" onRender={callback}>
+          <Profiler id="test" onRender={callback}>
             <Yield renderTime={3} />
             <Yield renderTime={5} />
             <Yield renderTime={9} />
-          </React.unstable_Profiler>,
+          </Profiler>,
         );
         expect(renderer.unstable_flushThrough(['Yield:3'])).toEqual([
           'Yield:3',
@@ -704,9 +723,9 @@ describe('Profiler', () => {
         expect(
           renderer.unstable_flushSync(() => {
             renderer.update(
-              <React.unstable_Profiler id="test" onRender={callback}>
+              <Profiler id="test" onRender={callback}>
                 <Yield renderTime={11} />
-              </React.unstable_Profiler>,
+              </Profiler>,
             );
           }),
         ).toEqual(['Yield:11']);
@@ -759,10 +778,10 @@ describe('Profiler', () => {
         advanceTimeBy(5); // 0 -> 5
 
         const renderer = ReactTestRenderer.create(
-          <React.unstable_Profiler id="test" onRender={callback} foo="1">
+          <Profiler id="test" onRender={callback} foo="1">
             <FirstComponent />
             <SecondComponent />
-          </React.unstable_Profiler>,
+          </Profiler>,
           {unstable_isAsync: true},
         );
 
@@ -876,12 +895,12 @@ describe('Profiler', () => {
             advanceTimeBy(5); // 0 -> 5
 
             ReactTestRenderer.create(
-              <React.unstable_Profiler id="test" onRender={callback}>
+              <Profiler id="test" onRender={callback}>
                 <ErrorBoundary>
                   <AdvanceTime byAmount={5} />
                   <ThrowsError />
                 </ErrorBoundary>
-              </React.unstable_Profiler>,
+              </Profiler>,
             );
 
             expect(callback).toHaveBeenCalledTimes(2);
@@ -940,12 +959,12 @@ describe('Profiler', () => {
             advanceTimeBy(5); // 0 -> 5
 
             ReactTestRenderer.create(
-              <React.unstable_Profiler id="test" onRender={callback}>
+              <Profiler id="test" onRender={callback}>
                 <ErrorBoundary>
                   <AdvanceTime byAmount={5} />
                   <ThrowsError />
                 </ErrorBoundary>
-              </React.unstable_Profiler>,
+              </Profiler>,
             );
 
             expect(callback).toHaveBeenCalledTimes(1);
@@ -972,7 +991,7 @@ describe('Profiler', () => {
             jest.resetModules();
 
             loadModules({
-              useNoopRenderer: true,
+              rendererToLoad: 'noop',
               replayFailedUnitOfWorkWithInvokeGuardedCallback: flagEnabled,
             });
 
@@ -980,9 +999,9 @@ describe('Profiler', () => {
             // This mimics behavior like React Native's View/Text nesting validation.
             ReactNoop.simulateErrorInHostConfigDuringCompletePhase(() => {
               ReactNoop.render(
-                <React.unstable_Profiler id="profiler" onRender={jest.fn()}>
+                <Profiler id="profiler" onRender={jest.fn()}>
                   <span>hi</span>
-                </React.unstable_Profiler>,
+                </Profiler>,
               );
               expect(ReactNoop.flush).toThrow('Error in host config.');
             });
@@ -990,12 +1009,271 @@ describe('Profiler', () => {
             // So long as the profiler timer's fiber stack is reset correctly,
             // Subsequent renders should not error.
             ReactNoop.render(
-              <React.unstable_Profiler id="profiler" onRender={jest.fn()}>
+              <Profiler id="profiler" onRender={jest.fn()}>
                 <span>hi</span>
-              </React.unstable_Profiler>,
+              </Profiler>,
             );
             ReactNoop.flush();
           });
+        });
+      });
+
+      describe('batched roots', () => {
+        let advanceCurrentTime;
+
+        beforeEach(() => {
+          // TODO Copied from ReactDOMRoot-test
+          const originalDateNow = Date.now;
+          let advancedTime = null;
+          global.Date.now = function() {
+console.log('[TEST] now()', originalDateNow() + advancedTime);
+            if (advancedTime) {
+              return originalDateNow() + advancedTime;
+            }
+            return originalDateNow();
+          };
+          advanceCurrentTime = function(amount) {
+            advancedTime = amount;
+          };
+          global.requestAnimationFrame = function(cb) {
+console.log('[TEST] requestAnimationFrame()');
+            return setTimeout(() => {
+              cb(Date.now());
+            });
+          };
+          const originalAddEventListener = global.addEventListener;
+          let postMessageCallback;
+          global.addEventListener = function(eventName, callback, useCapture) {
+            if (eventName === 'message') {
+              postMessageCallback = callback;
+            } else {
+              originalAddEventListener(eventName, callback, useCapture);
+            }
+          };
+          global.postMessage = function(messageKey, targetOrigin) {
+            const postMessageEvent = {source: window, data: messageKey};
+            if (postMessageCallback) {
+              postMessageCallback(postMessageEvent);
+            }
+          };
+        });
+
+        // TODO 
+        // You can also render the root and yield right after completing the root, before committing.
+        // Then start rendering on a separate root.
+        // Add a log inside of componentDidMount to confirm it doesn't actually mount.
+        // Then later when you do commit it, confirm that it commits without having to re-render anything.
+        fit('foo bar baz', () => {
+          jest.resetModules();
+
+          loadModules({ rendererToLoad: 'test' });
+
+          const ComponentOne = jest.fn(() => null);
+          const ComponentTwo = jest.fn(() => null);
+
+          let rootOneComponentDidMount = false;
+          let rootTwoComponentDidMount = false;
+
+          class RootOneComponent extends React.Component {
+            componentDidMount() {
+              rootOneComponentDidMount = true;
+            }
+            render() {
+              rootA.unstable_yield('a');
+              return 'root one component';
+            }
+          }
+
+          class RootTwoComponent extends React.Component {
+            componentDidMount() {
+              rootTwoComponentDidMount = true;
+            }
+            render() {
+              return 'root two component';
+            }
+          }
+
+          // TODO Reverse batch+async test to be async first, yield, then batch+commit
+          // Maybe this will catch the error?
+
+console.log('[TEST] Partial render ...');
+          const rootA = ReactTestRenderer.create(
+            <Profiler id="a" onRender={jest.fn()}>
+              <RootOneComponent />
+              <ComponentOne />
+            </Profiler>,
+            {
+              unstable_isAsync: true,
+            },
+          );
+          rootA.unstable_flushThrough(['a']);
+
+          expect(rootOneComponentDidMount).toBe(false);
+          expect(ComponentOne).not.toHaveBeenCalled();
+
+console.log('[TEST] Sync render ...');
+          const rootB = ReactTestRenderer.create(
+            <Profiler id="b" onRender={jest.fn()}>
+              <RootTwoComponent />
+              <ComponentTwo />
+            </Profiler>,
+          );
+
+          expect(rootOneComponentDidMount).toBe(false);
+          expect(ComponentOne).not.toHaveBeenCalled();
+          expect(rootTwoComponentDidMount).toBe(true);
+          expect(ComponentTwo).toHaveBeenCalled();
+
+console.log('[TEST] Flush partial render ...');
+          rootA.unstable_flushAll();
+
+          expect(rootOneComponentDidMount).toBe(true);
+          expect(ComponentOne).toHaveBeenCalled();
+        });
+
+        // TODO 
+        // You can also render the root and yield right after completing the root, before committing.
+        // Then start rendering on a separate root.
+        // Add a log inside of componentDidMount to confirm it doesn't actually mount.
+        // Then later when you do commit it, confirm that it commits without having to re-render anything.
+        xit('foo bar baz', () => {
+          jest.resetModules();
+
+          loadModules({ rendererToLoad: 'noop' });
+
+          const ComponentOne = jest.fn(() => null);
+          const ComponentTwo = jest.fn(() => null);
+
+          let rootOneComponentDidMount = false;
+          let rootTwoComponentDidMount = false;
+
+          class RootOneComponent extends React.Component {
+            componentDidMount() {
+              rootOneComponentDidMount = true;
+            }
+            render() {
+              ReactNoop.yield('a');
+              return 'root one component';
+            }
+          }
+
+          class RootTwoComponent extends React.Component {
+            componentDidMount() {
+              rootTwoComponentDidMount = true;
+            }
+            render() {
+              return 'root two component';
+            }
+          }
+
+          // TODO Reverse batch+async test to be async first, yield, then batch+commit
+          // Maybe this will catch the error?
+
+console.log('[TEST] Partial render ...');
+          ReactNoop.renderToRootWithID(
+            <Profiler id="a" onRender={jest.fn()}>
+              <RootOneComponent />
+              <ComponentOne />
+            </Profiler>,
+            'a',
+          );
+          ReactNoop.flushThrough(['a']);
+
+          expect(rootOneComponentDidMount).toBe(false);
+          expect(ComponentOne).not.toHaveBeenCalled();
+
+          ReactNoop.flushSync(() => {
+console.log('[TEST] Sync render ...');
+            ReactNoop.renderToRootWithID(
+              <Profiler id="b" onRender={jest.fn()}>
+                <RootTwoComponent />
+                <ComponentTwo />
+              </Profiler>,
+              'b',
+            );
+          });
+
+          expect(rootOneComponentDidMount).toBe(false);
+          expect(ComponentOne).not.toHaveBeenCalled();
+          expect(rootTwoComponentDidMount).toBe(true);
+          expect(ComponentTwo).toHaveBeenCalled();
+
+console.log('[TEST] Flush partial render ...');
+          ReactNoop.flush();
+
+          expect(rootOneComponentDidMount).toBe(true);
+          expect(ComponentOne).toHaveBeenCalled();
+        });
+
+        // TODO: Write a test that starts an async root, yields, then commits a sync root.
+        // This might be what's happening on FB....
+        // Maybe we completed a root entirely, but were waiting on batch.commit() before we committed it,
+        // Then in the meanwhile we starte doing async work.
+        // Use batch API to totally render a tree (and verify that batch.then resolves so the work has completed)
+        // Then start some async work on a separate root, then yield,
+        // Then commit the first batch.
+        xit('should reset state corectly when transitioning between roots', done => {
+          jest.resetModules();
+
+          loadModules({ rendererToLoad: 'dom' });
+
+          const BatchComponent = jest.fn(() => <div>Batch content</div>);
+          const AsyncComponentOne = jest.fn(() => {
+console.log('[TEST] <AsyncComponentOne> rendering');
+            advanceCurrentTime(1);
+            return <AsyncComponentTwo />;
+          });
+          const AsyncComponentTwo = jest.fn(() => {
+console.log('[TEST] <AsyncComponentTwo> rendering');
+            return <div>Async content</div>;
+          });
+
+          const batchedContainer = document.createElement('div');
+          const batchedRoot = ReactDOM.unstable_createRoot(batchedContainer);
+          const batch = batchedRoot.createBatch();
+  console.log('[[[TEST]]] render batch')
+          batch.render(
+//            <AsyncMode>
+              <Profiler id="batch" onRender={jest.fn()}>
+                <BatchComponent />
+              </Profiler>
+//            </AsyncMode>
+          );
+          jest.runAllTimers();
+  console.log('[[[TEST]]] batch waiting')
+
+          // Verify that the batch has been processed, but not yet committed.
+          expect(BatchComponent).toHaveBeenCalled();
+          expect(batchedContainer.textContent).toEqual('');
+
+          // While the batch is pending, start some async work–
+          // But yield before completing it.
+          const asyncContainer = document.createElement('div');
+  console.log('[[[TEST]]] render async')
+          const asyncRoot = ReactDOM.unstable_createRoot(asyncContainer);
+          asyncRoot.render(
+//            <AsyncMode>
+            <Profiler id="async" onRender={jest.fn()}>
+              <AsyncComponentOne />
+            </Profiler>
+//            </AsyncMode>
+          );
+          jest.runAllTimers();
+          expect(AsyncComponentOne).toHaveBeenCalled();
+          expect(AsyncComponentTwo).not.toHaveBeenCalled();
+          expect(asyncContainer.textContent).toEqual('');
+
+          // Now commit the pending batch,
+          // And verify that the profile timer stack is okay.
+  console.log('[[[TEST]]] commit batch')
+          batch.commit();
+          expect(batchedContainer.textContent).toEqual('Batch content');
+
+  console.log('[[[TEST]]] run timers')
+          jest.runAllTimers();
+          expect(asyncContainer.textContent).toEqual('Async content');
+
+          done();
         });
       });
     });
@@ -1006,9 +1284,9 @@ describe('Profiler', () => {
       advanceTimeBy(5); // 0 -> 5
 
       const renderer = ReactTestRenderer.create(
-        <React.unstable_Profiler id="one" onRender={callback}>
+        <Profiler id="one" onRender={callback}>
           <AdvanceTime byAmount={2} />
-        </React.unstable_Profiler>,
+        </Profiler>,
       );
 
       expect(callback).toHaveBeenCalledTimes(1);
@@ -1016,9 +1294,9 @@ describe('Profiler', () => {
       advanceTimeBy(20); // 7 -> 27
 
       renderer.update(
-        <React.unstable_Profiler id="two" onRender={callback}>
+        <Profiler id="two" onRender={callback}>
           <AdvanceTime byAmount={1} />
-        </React.unstable_Profiler>,
+        </Profiler>,
       );
 
       expect(callback).toHaveBeenCalledTimes(2);

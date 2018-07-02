@@ -520,6 +520,7 @@ function completeWork(
 
   if (enableProfilerTimer) {
     if (workInProgress.mode & ProfileMode) {
+console.log(`completeWork() ${require('shared/getComponentName').default(workInProgress)}`);
       // Don't record elapsed time unless the "complete" phase has succeeded.
       // Certain renderers may error during this phase (i.e. ReactNative View/Text nesting validation).
       // If an error occurs, we'll mark the time while unwinding.
