@@ -99,7 +99,7 @@ export function wrap(callback: Function): Function {
   return wrapZone(callback);
 }
 
-export function getCurrentContext(): InteractionContext | null {
+export function getCurrentEvent(): InteractionContext | null {
   if (!__PROFILE__) {
     return null;
   } else {

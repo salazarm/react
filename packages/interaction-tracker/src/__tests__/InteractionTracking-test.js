@@ -28,7 +28,7 @@ describe('InteractionTracking', () => {
   });
 
   it('should return a null eventName when outside of a tracked event', () => {
-    expect(InteractionTracking.getCurrentContext()).toBe(null);
+    expect(InteractionTracking.getCurrentEvent()).toBe(null);
   });
 
   if (__PROFILE__) {
@@ -37,7 +37,7 @@ describe('InteractionTracking', () => {
         advanceTimeBy(100);
 
         InteractionTracking.track('some event', () => {
-          const context = InteractionTracking.getCurrentContext();
+          const context = InteractionTracking.getCurrentEvent();
           expect(context.eventName).toBe('some event');
           expect(context.timestamp).toBe(100);
 
@@ -49,7 +49,7 @@ describe('InteractionTracking', () => {
         let wrappedIndirection;
 
         function indirection() {
-          const context = InteractionTracking.getCurrentContext();
+          const context = InteractionTracking.getCurrentEvent();
           expect(context.eventName).toBe('some event');
           expect(context.timestamp).toBe(100);
 
@@ -79,7 +79,7 @@ describe('InteractionTracking', () => {
         InteractionTracking.track('some event', () => {
           advanceTimeBy(5);
 
-          let context = InteractionTracking.getCurrentContext();
+          let context = InteractionTracking.getCurrentEvent();
           expect(context.eventName).toBe('some event');
           expect(context.timestamp).toBe(100);
           expect(context.firstMarkedEvent).toBeNull();
@@ -92,7 +92,7 @@ describe('InteractionTracking', () => {
 
           InteractionTracking.addContext('some more context');
 
-          context = InteractionTracking.getCurrentContext();
+          context = InteractionTracking.getCurrentEvent();
           expect(context.eventName).toBe('some event');
           expect(context.timestamp).toBe(100);
           expect(context.firstMarkedEvent).not.toBeNull();
@@ -117,7 +117,7 @@ describe('InteractionTracking', () => {
         let outerIndirectionTracked = false;
 
         function innerIndirection() {
-          const context = InteractionTracking.getCurrentContext();
+          const context = InteractionTracking.getCurrentEvent();
           expect(context.eventName).toBe('inner event');
           expect(context.timestamp).toBe(150);
 
@@ -125,7 +125,7 @@ describe('InteractionTracking', () => {
         }
 
         function outerIndirection() {
-          const context = InteractionTracking.getCurrentContext();
+          const context = InteractionTracking.getCurrentEvent();
           expect(context.eventName).toBe('outer event');
           expect(context.timestamp).toBe(100);
 
@@ -134,7 +134,7 @@ describe('InteractionTracking', () => {
 
         InteractionTracking.track('outer event', () => {
           // Verify the current tracked event
-          let context = InteractionTracking.getCurrentContext();
+          let context = InteractionTracking.getCurrentEvent();
           expect(context.eventName).toBe('outer event');
           expect(context.timestamp).toBe(100);
 
@@ -149,7 +149,7 @@ describe('InteractionTracking', () => {
 
           // Verify that a nested event is properly tracked
           InteractionTracking.track('inner event', () => {
-            context = InteractionTracking.getCurrentContext();
+            context = InteractionTracking.getCurrentEvent();
             expect(context.eventName).toBe('inner event');
             expect(context.timestamp).toBe(150);
 
@@ -167,7 +167,7 @@ describe('InteractionTracking', () => {
           expect(innerEventTracked).toBe(true);
 
           // Verify that the original event is restored
-          context = InteractionTracking.getCurrentContext();
+          context = InteractionTracking.getCurrentEvent();
           expect(context.eventName).toBe('outer event');
           expect(context.timestamp).toBe(100);
 
@@ -183,7 +183,7 @@ describe('InteractionTracking', () => {
     describe('production bundle', () => {
       it('should execute tracked callbacks', done => {
         InteractionTracking.track('some event', () => {
-          expect(InteractionTracking.getCurrentContext()).toBe(null);
+          expect(InteractionTracking.getCurrentEvent()).toBe(null);
 
           done();
         });
@@ -191,7 +191,7 @@ describe('InteractionTracking', () => {
 
       it('should execute wrapped callbacks', done => {
         const wrappedCallback = InteractionTracking.wrap(() => {
-          expect(InteractionTracking.getCurrentContext()).toBe(null);
+          expect(InteractionTracking.getCurrentEvent()).toBe(null);
 
           done();
         });
