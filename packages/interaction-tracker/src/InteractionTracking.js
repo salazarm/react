@@ -19,16 +19,16 @@ import {
 // So that async callbacks are automatically wrapped with the current tracked event info.
 // For the initial iteration, async callbacks must be explicitely wrapped with wrap().
 
-export type MarkedEvent = {|
+export type AddedInteractionContext = {|
   eventName: string,
-  nextMarkedEvent: MarkedEvent | null,
+  nextContext: AddedInteractionContext | null,
   timestamp: number,
 |};
 
-export type InteractionContext = {|
+export type InteractionEvent = {|
   eventName: string,
-  firstMarkedEvent: MarkedEvent | null,
-  lastMarkedEvent: MarkedEvent | null,
+  firstContext: AddedInteractionContext | null,
+  lastContext: AddedInteractionContext | null,
   timestamp: number,
 |};
 
@@ -54,10 +54,10 @@ export function track(eventName: string, callback: Function): void {
     return;
   }
 
-  const context: InteractionContext = {
+  const context: InteractionEvent = {
     eventName,
-    firstMarkedEvent: null,
-    lastMarkedEvent: null,
+    firstContext: null,
+    lastContext: null,
     timestamp: now(),
   };
 
@@ -69,7 +69,7 @@ export function addContext(eventName: string): void {
     return;
   }
 
-  const context = ((getCurrentContextZone(): any): InteractionContext);
+  const context = ((getCurrentContextZone(): any): InteractionEvent);
 
   if (__DEV__) {
     invariant(
@@ -78,16 +78,16 @@ export function addContext(eventName: string): void {
     );
   }
 
-  const markedEvent: MarkedEvent = {
+  const markedEvent: AddedInteractionContext = {
     eventName,
-    nextMarkedEvent: null,
+    nextContext: null,
     timestamp: now(),
   };
-  if (context.lastMarkedEvent !== null) {
-    context.lastMarkedEvent.nextMarkedEvent = markedEvent;
-    context.lastMarkedEvent = markedEvent;
+  if (context.lastContext !== null) {
+    context.lastContext.nextContext = markedEvent;
+    context.lastContext = markedEvent;
   } else {
-    context.firstMarkedEvent = context.lastMarkedEvent = markedEvent;
+    context.firstContext = context.lastContext = markedEvent;
   }
 }
 
@@ -99,7 +99,7 @@ export function wrap(callback: Function): Function {
   return wrapZone(callback);
 }
 
-export function getCurrentEvent(): InteractionContext | null {
+export function getCurrentEvent(): InteractionEvent | null {
   if (!__PROFILE__) {
     return null;
   } else {

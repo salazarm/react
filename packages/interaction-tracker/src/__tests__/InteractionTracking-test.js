@@ -82,7 +82,7 @@ describe('InteractionTracking', () => {
           let context = InteractionTracking.getCurrentEvent();
           expect(context.eventName).toBe('some event');
           expect(context.timestamp).toBe(100);
-          expect(context.firstMarkedEvent).toBeNull();
+          expect(context.firstContext).toBeNull();
 
           advanceTimeBy(10);
 
@@ -95,16 +95,14 @@ describe('InteractionTracking', () => {
           context = InteractionTracking.getCurrentEvent();
           expect(context.eventName).toBe('some event');
           expect(context.timestamp).toBe(100);
-          expect(context.firstMarkedEvent).not.toBeNull();
-          expect(context.firstMarkedEvent.eventName).toBe('some context');
-          expect(context.firstMarkedEvent.timestamp).toBe(115);
-          expect(context.lastMarkedEvent).not.toBeNull();
-          expect(context.lastMarkedEvent).toBe(
-            context.firstMarkedEvent.nextMarkedEvent,
-          );
-          expect(context.lastMarkedEvent).not.toBe(context.firstMarkedEvent);
-          expect(context.lastMarkedEvent.eventName).toBe('some more context');
-          expect(context.lastMarkedEvent.timestamp).toBe(135);
+          expect(context.firstContext).not.toBeNull();
+          expect(context.firstContext.eventName).toBe('some context');
+          expect(context.firstContext.timestamp).toBe(115);
+          expect(context.lastContext).not.toBeNull();
+          expect(context.lastContext).toBe(context.firstContext.nextContext);
+          expect(context.lastContext).not.toBe(context.firstContext);
+          expect(context.lastContext.eventName).toBe('some more context');
+          expect(context.lastContext.timestamp).toBe(135);
 
           done();
         });
