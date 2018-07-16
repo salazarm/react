@@ -20,13 +20,13 @@ import {
 // For the initial iteration, async callbacks must be explicitely wrapped with wrap().
 
 export type AddedInteractionContext = {|
-  eventName: string,
+  name: string,
   nextContext: AddedInteractionContext | null,
   timestamp: number,
 |};
 
 export type InteractionEvent = {|
-  eventName: string,
+  name: string,
   firstContext: AddedInteractionContext | null,
   lastContext: AddedInteractionContext | null,
   timestamp: number,
@@ -37,9 +37,9 @@ export type InteractionEvent = {|
 // I instead just copied the approach used by ReactScheduler.
 let now;
 if (typeof performance === 'object' && typeof performance.now === 'function') {
-  const Performance = performance;
+  const localPerformance = performance;
   now = function() {
-    return Performance.now();
+    return localPerformance.now();
   };
 } else {
   const localDate = Date;
@@ -48,14 +48,14 @@ if (typeof performance === 'object' && typeof performance.now === 'function') {
   };
 }
 
-export function track(eventName: string, callback: Function): void {
+export function track(name: string, callback: Function): void {
   if (!__PROFILE__) {
     callback();
     return;
   }
 
   const context: InteractionEvent = {
-    eventName,
+    name,
     firstContext: null,
     lastContext: null,
     timestamp: now(),
@@ -64,7 +64,7 @@ export function track(eventName: string, callback: Function): void {
   trackZone(context, callback);
 }
 
-export function addContext(eventName: string): void {
+export function addContext(name: string): void {
   if (!__PROFILE__) {
     return;
   }
@@ -79,7 +79,7 @@ export function addContext(eventName: string): void {
   }
 
   const markedEvent: AddedInteractionContext = {
-    eventName,
+    name,
     nextContext: null,
     timestamp: now(),
   };
