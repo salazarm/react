@@ -5,20 +5,32 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @emails react-core
+ * @jest-environment node
  */
 
 'use strict';
 
+let InteractionTracking;
 let React;
 let ReactFeatureFlags;
 let ReactNoop;
 let ReactTestRenderer;
+let advanceTimeBy;
+let mockNow;
+let AdvanceTime;
 
 function loadModules({
   enableProfilerTimer = true,
   replayFailedUnitOfWorkWithInvokeGuardedCallback = false,
   useNoopRenderer = false,
 } = {}) {
+  let currentTime = 0;
+
+  mockNow = jest.fn().mockImplementation(() => currentTime);
+
+  global.Date.now = mockNow;
+
+  InteractionTracking = require('interaction-tracking');
   ReactFeatureFlags = require('shared/ReactFeatureFlags');
   ReactFeatureFlags.debugRenderPhaseSideEffects = false;
   ReactFeatureFlags.debugRenderPhaseSideEffectsForStrictMode = false;
@@ -31,7 +43,27 @@ function loadModules({
     ReactNoop = require('react-noop-renderer');
   } else {
     ReactTestRenderer = require('react-test-renderer');
+    ReactTestRenderer.unstable_setNowImplementation(mockNow);
   }
+
+  advanceTimeBy = amount => {
+    currentTime += amount;
+  };
+
+  AdvanceTime = class extends React.Component {
+    static defaultProps = {
+      byAmount: 10,
+      shouldComponentUpdate: true,
+    };
+    shouldComponentUpdate(nextProps) {
+      return nextProps.shouldComponentUpdate;
+    }
+    render() {
+      // Simulate time passing when this component is rendered
+      advanceTimeBy(this.props.byAmount);
+      return this.props.children || null;
+    }
+  };
 }
 
 const mockDevToolsForTest = () => {
@@ -120,41 +152,10 @@ describe('Profiler', () => {
   });
 
   describe('onRender callback', () => {
-    let AdvanceTime;
-    let advanceTimeBy;
-    let mockNow;
-
-    const mockNowForTests = () => {
-      let currentTime = 0;
-
-      mockNow = jest.fn().mockImplementation(() => currentTime);
-
-      ReactTestRenderer.unstable_setNowImplementation(mockNow);
-      advanceTimeBy = amount => {
-        currentTime += amount;
-      };
-    };
-
     beforeEach(() => {
       jest.resetModules();
 
       loadModules();
-      mockNowForTests();
-
-      AdvanceTime = class extends React.Component {
-        static defaultProps = {
-          byAmount: 10,
-          shouldComponentUpdate: true,
-        };
-        shouldComponentUpdate(nextProps) {
-          return nextProps.shouldComponentUpdate;
-        }
-        render() {
-          // Simulate time passing when this component is rendered
-          advanceTimeBy(this.props.byAmount);
-          return this.props.children || null;
-        }
-      };
     });
 
     it('is not invoked until the commit phase', () => {
@@ -216,13 +217,14 @@ describe('Profiler', () => {
 
       let [call] = callback.mock.calls;
 
-      expect(call).toHaveLength(6);
+      expect(call).toHaveLength(7);
       expect(call[0]).toBe('test');
       expect(call[1]).toBe('mount');
       expect(call[2]).toBe(10); // actual time
       expect(call[3]).toBe(10); // base time
       expect(call[4]).toBe(5); // start time
       expect(call[5]).toBe(15); // commit time
+      expect(call[6]).toEqual([]); // interaction events
 
       callback.mockReset();
 
@@ -238,13 +240,14 @@ describe('Profiler', () => {
 
       [call] = callback.mock.calls;
 
-      expect(call).toHaveLength(6);
+      expect(call).toHaveLength(7);
       expect(call[0]).toBe('test');
       expect(call[1]).toBe('update');
       expect(call[2]).toBe(10); // actual time
       expect(call[3]).toBe(10); // base time
       expect(call[4]).toBe(35); // start time
       expect(call[5]).toBe(45); // commit time
+      expect(call[6]).toEqual([]); // interaction events
 
       callback.mockReset();
 
@@ -260,13 +263,14 @@ describe('Profiler', () => {
 
       [call] = callback.mock.calls;
 
-      expect(call).toHaveLength(6);
+      expect(call).toHaveLength(7);
       expect(call[0]).toBe('test');
       expect(call[1]).toBe('update');
       expect(call[2]).toBe(4); // actual time
       expect(call[3]).toBe(4); // base time
       expect(call[4]).toBe(65); // start time
       expect(call[5]).toBe(69); // commit time
+      expect(call[6]).toEqual([]); // interaction events
     });
 
     it('includes render times of nested Profilers in their parent times', () => {
@@ -770,7 +774,7 @@ describe('Profiler', () => {
         advanceTimeBy(5); // 0 -> 5
 
         const renderer = ReactTestRenderer.create(
-          <React.unstable_Profiler id="test" onRender={callback} foo="1">
+          <React.unstable_Profiler id="test" onRender={callback}>
             <FirstComponent />
             <SecondComponent />
           </React.unstable_Profiler>,
@@ -855,7 +859,6 @@ describe('Profiler', () => {
             loadModules({
               replayFailedUnitOfWorkWithInvokeGuardedCallback: flagEnabled,
             });
-            mockNowForTests();
           });
 
           it('should accumulate actual time after an error handled by componentDidCatch()', () => {
@@ -1105,5 +1108,121 @@ describe('Profiler', () => {
     ReactNoop.flush();
 
     expect(ReactNoop.getRoot('two').current.actualDuration).toBe(14);
+  });
+
+  describe('interaction tracking', () => {
+    beforeEach(() => {
+      jest.resetModules();
+
+      loadModules();
+    });
+
+    it('should associate tracked events with their subsequent commits', () => {
+      let instance = null;
+
+      const Yield = ({duration = 10, value}) => {
+        advanceTimeBy(duration);
+        renderer.unstable_yield(value);
+        return null;
+      };
+
+      class Example extends React.Component {
+        state = {
+          count: 0,
+        };
+        render() {
+          instance = this;
+          return (
+            <React.Fragment>
+              <Yield value="first" />
+              {this.state.count}
+              <Yield value="last" />
+            </React.Fragment>
+          );
+        }
+      }
+
+      const onRender = jest.fn();
+
+      const renderer = ReactTestRenderer.create(
+        <React.unstable_Profiler id="test-profiler" onRender={onRender}>
+          <Example />
+        </React.unstable_Profiler>,
+        {
+          unstable_isAsync: true,
+        },
+      );
+
+      // Mount
+      renderer.unstable_flushAll(['first', 'last']);
+
+      onRender.mockClear();
+
+      let didRunCallback = false;
+
+      const initialEventTime = mockNow();
+      InteractionTracking.track('initial event', () => {
+        advanceTimeBy(1);
+        const firstUpdateTime = mockNow();
+        InteractionTracking.addContext('first update');
+
+        advanceTimeBy(2);
+        const secondUpdateTime = mockNow();
+        InteractionTracking.addContext('second update');
+        expect(onRender).not.toHaveBeenCalled();
+
+        instance.setState({count: 1});
+
+        // Update state again to verify our tracked interaction isn't registered twice
+        instance.setState({count: 2});
+
+        renderer.unstable_flushThrough(['first']);
+        expect(onRender).not.toHaveBeenCalled();
+
+        renderer.unstable_flushAll(['last']);
+        expect(onRender).toHaveBeenCalledTimes(1);
+
+        const expectedCommitTime = mockNow();
+
+        const [call] = onRender.mock.calls;
+        expect(call[0]).toEqual('test-profiler');
+        expect(call[5]).toEqual(expectedCommitTime);
+        expect(call[6]).toHaveLength(3);
+        expect(call[6][0]).toEqual({
+          name: 'initial event',
+          timestamp: initialEventTime,
+        });
+        expect(call[6][1]).toEqual({
+          name: 'first update',
+          timestamp: firstUpdateTime,
+        });
+        expect(call[6][2]).toEqual({
+          name: 'second update',
+          timestamp: secondUpdateTime,
+        });
+
+        didRunCallback = true;
+      });
+
+      jest.runAllTimers();
+
+      expect(didRunCallback).toBe(true);
+
+      onRender.mockClear();
+
+      advanceTimeBy(5);
+
+      // Verify that updating state again does not re-log our interaction.
+      instance.setState({count: 3});
+      renderer.unstable_flushAll(['first', 'last']);
+
+      const expectedCommitTime = mockNow();
+
+      expect(onRender).toHaveBeenCalledTimes(1);
+      const [call] = onRender.mock.calls;
+      expect(call[0]).toEqual('test-profiler');
+      expect(call[5]).toEqual(expectedCommitTime);
+      expect(call[6]).toHaveLength(0);
+    });
   });
 });

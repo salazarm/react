@@ -18,6 +18,7 @@ import type {Fiber} from './ReactFiber';
 import type {FiberRoot} from './ReactFiberRoot';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {CapturedValue, CapturedError} from './ReactCapturedValue';
+import type {InteractionEvent} from 'interaction-tracking/src/INteractionTracking';
 
 import {enableProfilerTimer, enableSuspense} from 'shared/ReactFeatureFlags';
 import {
@@ -768,7 +769,11 @@ function commitDeletion(current: Fiber): void {
   detachFiber(current);
 }
 
-function commitWork(current: Fiber | null, finishedWork: Fiber): void {
+function commitWork(
+  current: Fiber | null,
+  finishedWork: Fiber,
+  committedExpirationTime: ExpirationTime,
+): void {
   if (!supportsMutation) {
     commitContainer(finishedWork);
     return;
@@ -826,6 +831,34 @@ function commitWork(current: Fiber | null, finishedWork: Fiber): void {
     case Profiler: {
       if (enableProfilerTimer) {
         const onRender = finishedWork.memoizedProps.onRender;
+        const expirationTimeMap = ((finishedWork.stateNode: any): Map<
+          ExpirationTime,
+          Set<InteractionEvent>,
+        >);
+        const interactionEvents = [];
+
+        // Find any interaction events that were related to this commit.
+        expirationTimeMap.forEach((events, expirationTime) => {
+          if (expirationTime <= committedExpirationTime) {
+            events.forEach(event => {
+              interactionEvents.push({
+                name: event.name,
+                timestamp: event.timestamp,
+              });
+              // TODO (bvaughn) Do we want this sort of flat reporting format?
+              let currentContext = event.firstContext;
+              while (currentContext !== null) {
+                interactionEvents.push({
+                  name: currentContext.name,
+                  timestamp: currentContext.timestamp,
+                });
+                currentContext = currentContext.nextContext;
+              }
+            });
+            expirationTimeMap.delete(expirationTime);
+          }
+        });
+
         onRender(
           finishedWork.memoizedProps.id,
           current === null ? 'mount' : 'update',
@@ -833,6 +866,7 @@ function commitWork(current: Fiber | null, finishedWork: Fiber): void {
           finishedWork.treeBaseDuration,
           finishedWork.actualStartTime,
           getCommitTime(),
+          interactionEvents,
         );
       }
       return;

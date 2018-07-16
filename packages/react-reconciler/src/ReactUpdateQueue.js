@@ -86,6 +86,7 @@
 
 import type {Fiber} from './ReactFiber';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
+import type {InteractionEvent} from 'interaction-tracking/src/INteractionTracking';
 
 import {NoWork} from './ReactFiberExpirationTime';
 import {
@@ -98,9 +99,12 @@ import {ClassComponent} from 'shared/ReactTypeOfWork';
 import {
   debugRenderPhaseSideEffects,
   debugRenderPhaseSideEffectsForStrictMode,
+  enableProfilerTimer,
 } from 'shared/ReactFeatureFlags';
+import {REACT_PROFILER_TYPE} from 'shared/ReactSymbols';
 
-import {StrictMode} from './ReactTypeOfMode';
+import {ProfileMode, StrictMode} from './ReactTypeOfMode';
+import {getCurrentEvent} from 'interaction-tracking';
 
 import invariant from 'shared/invariant';
 import warning from 'shared/warning';
@@ -234,6 +238,36 @@ export function enqueueUpdate<State>(
   update: Update<State>,
   expirationTime: ExpirationTime,
 ) {
+  if (enableProfilerTimer) {
+    if (fiber.mode & ProfileMode) {
+      // If we are currently tracking an interaction, register it with parent Profiler(s).
+      const currentInteractionEvent = getCurrentEvent();
+      if (currentInteractionEvent !== null) {
+        let current = fiber;
+        while (current.return !== null) {
+          current = current.return;
+          if (current.type === REACT_PROFILER_TYPE) {
+            const expirationTimeMap = ((current.stateNode: any): Map<
+              ExpirationTime,
+              Set<InteractionEvent>,
+            >);
+            if (expirationTimeMap.has(expirationTime)) {
+              const set = ((expirationTimeMap.get(expirationTime): any): Set<
+                InteractionEvent,
+              >);
+              set.add(currentInteractionEvent);
+            } else {
+              expirationTimeMap.set(
+                expirationTime,
+                new Set([currentInteractionEvent]),
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Update queues are created lazily.
   const alternate = fiber.alternate;
   let queue1;

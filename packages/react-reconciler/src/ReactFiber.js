@@ -68,6 +68,14 @@ if (__DEV__) {
   }
 }
 
+// TODO (bvaughn) Document this type
+export type ProfilerEvent = {|
+  eventName: string,
+  expirationTime: ExpirationTime,
+  next: ProfilerEvent | null,
+  timestamp: number,
+|};
+
 // A Fiber is work on a Component that needs to be done or was done. There can
 // be more than one per component.
 export type Fiber = {|
@@ -173,6 +181,10 @@ export type Fiber = {|
   // This field is only set when the enableProfilerTimer flag is enabled.
   treeBaseDuration?: number,
 
+  // TODO (bvaughn) Document this field
+  firstProfilerEvent?: ProfilerEvent | null,
+  lastProfilerEvent?: ProfilerEvent | null,
+
   // Conceptual aliases
   // workInProgress : Fiber ->  alternate The alternate used for reuse happens
   // to be the same as work in progress.
@@ -232,6 +244,8 @@ function FiberNode(
     this.actualStartTime = 0;
     this.selfBaseDuration = 0;
     this.treeBaseDuration = 0;
+    this.firstProfilerEvent = null;
+    this.lastProfilerEvent = null;
   }
 
   if (__DEV__) {
@@ -340,6 +354,8 @@ export function createWorkInProgress(
   if (enableProfilerTimer) {
     workInProgress.selfBaseDuration = current.selfBaseDuration;
     workInProgress.treeBaseDuration = current.treeBaseDuration;
+    workInProgress.firstProfilerEvent = current.firstProfilerEvent;
+    workInProgress.lastProfilerEvent = current.lastProfilerEvent;
   }
 
   return workInProgress;
@@ -494,6 +510,12 @@ export function createFiberFromProfiler(
   fiber.type = REACT_PROFILER_TYPE;
   fiber.expirationTime = expirationTime;
 
+  if (enableProfilerTimer) {
+    // Map of expiration time to interaction events.
+    // Populated when state updates are enqueued during a tracked interaction.
+    fiber.stateNode = new Map();
+  }
+
   return fiber;
 }
 
@@ -571,6 +593,8 @@ export function assignFiberPropertiesInDEV(
     target.actualStartTime = source.actualStartTime;
     target.selfBaseDuration = source.selfBaseDuration;
     target.treeBaseDuration = source.treeBaseDuration;
+    target.firstProfilerEvent = source.firstProfilerEvent;
+    target.lastProfilerEvent = source.lastProfilerEvent;
   }
   target._debugID = source._debugID;
   target._debugSource = source._debugSource;
