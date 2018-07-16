@@ -1182,11 +1182,9 @@ describe('Profiler', () => {
         renderer.unstable_flushAll(['last']);
         expect(onRender).toHaveBeenCalledTimes(1);
 
-        const expectedCommitTime = mockNow();
-
         const [call] = onRender.mock.calls;
         expect(call[0]).toEqual('test-profiler');
-        expect(call[5]).toEqual(expectedCommitTime);
+        expect(call[5]).toEqual(mockNow());
         expect(call[6]).toHaveLength(3);
         expect(call[6][0]).toEqual({
           name: 'initial event',
@@ -1216,13 +1214,98 @@ describe('Profiler', () => {
       instance.setState({count: 3});
       renderer.unstable_flushAll(['first', 'last']);
 
-      const expectedCommitTime = mockNow();
-
       expect(onRender).toHaveBeenCalledTimes(1);
       const [call] = onRender.mock.calls;
       expect(call[0]).toEqual('test-profiler');
-      expect(call[5]).toEqual(expectedCommitTime);
+      expect(call[5]).toEqual(mockNow());
       expect(call[6]).toHaveLength(0);
+    });
+
+    it('should report the expected times when a high-priority update interrupts a low-priority update', () => {
+      const onRender = jest.fn();
+
+      let first;
+      class FirstComponent extends React.Component {
+        state = {count: 0};
+        render() {
+          first = this;
+          renderer.unstable_yield('FirstComponent');
+          return null;
+        }
+      }
+      let second;
+      class SecondComponent extends React.Component {
+        state = {count: 0};
+        render() {
+          second = this;
+          renderer.unstable_yield('SecondComponent');
+          return null;
+        }
+      }
+
+      advanceTimeBy(5);
+
+      const renderer = ReactTestRenderer.create(
+        <React.unstable_Profiler id="test" onRender={onRender}>
+          <FirstComponent />
+          <SecondComponent />
+        </React.unstable_Profiler>,
+        {unstable_isAsync: true},
+      );
+
+      // Initial mount.
+      renderer.unstable_flushAll(['FirstComponent', 'SecondComponent']);
+
+      onRender.mockClear();
+
+      advanceTimeBy(100);
+
+      const lowPriTime = mockNow();
+
+      InteractionTracking.track('lowPri', () => {
+        // Render a partially update, but don't finish.
+        first.setState({count: 1});
+        expect(renderer.unstable_flushThrough(['FirstComponent'])).toEqual([
+          'FirstComponent',
+        ]);
+        expect(onRender).not.toHaveBeenCalled();
+
+        advanceTimeBy(100);
+
+        let highPriTime;
+
+        // Interrupt with higher priority work.
+        // This simulates a total of 37ms of actual render time.
+        expect(
+          renderer.unstable_flushSync(() => {
+            highPriTime = mockNow();
+
+            InteractionTracking.track('highPri', () => {
+              second.setState({count: 1});
+            });
+          }),
+        ).toEqual(['SecondComponent']);
+
+        // Verify the high priority update was associated with the high priority event.
+        expect(onRender).toHaveBeenCalledTimes(1);
+        let call = onRender.mock.calls[0];
+        expect(call[0]).toEqual('test');
+        expect(call[5]).toEqual(mockNow());
+        expect(call[6][0]).toEqual({name: 'highPri', timestamp: highPriTime});
+
+        onRender.mockClear();
+
+        advanceTimeBy(100);
+
+        // Resume the original low priority update, with rebased state.
+        // Verify the low priority update was retained.
+        renderer.unstable_flushAll(['FirstComponent']);
+        expect(onRender).toHaveBeenCalledTimes(1);
+        call = onRender.mock.calls[0];
+        expect(call[0]).toEqual('test');
+        expect(call[5]).toEqual(mockNow());
+        expect(call[6][0]).toEqual({name: 'lowPri', timestamp: lowPriTime});
+      });
     });
   });
 });
