@@ -176,6 +176,51 @@ describe('InteractionTracking', () => {
           done();
         });
       });
+
+      describe('error handling', () => {
+        it('should reset state appropriately when an error occurs in a track callback', done => {
+          advanceTimeBy(100);
+
+          InteractionTracking.track('outer event', () => {
+            let context;
+
+            expect(() => {
+              InteractionTracking.track('inner event', () => {
+                throw Error('intentional');
+              });
+            }).toThrow();
+
+            context = InteractionTracking.getCurrentEvent();
+            expect(context.eventName).toBe('outer event');
+            expect(context.timestamp).toBe(100);
+
+            done();
+          });
+        });
+
+        it('should reset state appropriately when an error occurs in a wrap callback', done => {
+          advanceTimeBy(100);
+
+          InteractionTracking.track('outer event', () => {
+            let context;
+            let wrappedCallback;
+
+            InteractionTracking.track('inner event', () => {
+              wrappedCallback = InteractionTracking.wrap(() => {
+                throw Error('intentional');
+              });
+            });
+
+            expect(wrappedCallback).toThrow();
+
+            context = InteractionTracking.getCurrentEvent();
+            expect(context.eventName).toBe('outer event');
+            expect(context.timestamp).toBe(100);
+
+            done();
+          });
+        });
+      });
     });
   } else {
     describe('production bundle', () => {

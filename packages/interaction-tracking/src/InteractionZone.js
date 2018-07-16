@@ -21,8 +21,11 @@ export function track(context: ZoneContext, callback: Function): void {
 
   const prevContext = currentContext;
   currentContext = context;
-  callback();
-  currentContext = prevContext;
+  try {
+    callback();
+  } finally {
+    currentContext = prevContext;
+  }
 }
 
 export function wrap(callback: Function): Function {
@@ -39,8 +42,11 @@ export function wrap(callback: Function): Function {
   return (...args) => {
     const prevContext = currentContext;
     currentContext = wrappedContext;
-    callback(...args);
-    currentContext = prevContext;
+    try {
+      callback(...args);
+    } finally {
+      currentContext = prevContext;
+    }
   };
 }
 
