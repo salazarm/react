@@ -357,8 +357,7 @@ export function createWorkInProgress(
 
     if (current.type === REACT_PROFILER_TYPE) {
       // If we are currently tracking an interaction, register it with the Profiler.
-      // This covers renderer calls (e.g. initial mount) or renderer-level updates.
-      // In this case, it's sufficient to only query this info for a Profiler.
+      // This covers root renders (e.g. ReactDOM.render(...)) for updates.
       const interactions = getCurrentEvents();
       if (interactions !== null) {
         const {
@@ -541,8 +540,7 @@ export function createFiberFromProfiler(
     };
 
     // If we are currently tracking an interaction, register it with the Profiler.
-    // This covers renderer calls (e.g. initial mount) or renderer-level updates.
-    // In this case, it's sufficient to only query this info for a Profiler.
+    // This covers root renderers (e.g. ReactDOM.render(...)) for the initial mount.
     const interactions = getCurrentEvents();
     if (interactions !== null) {
       pendingInteractionMap.set(expirationTime, new Set(interactions));
