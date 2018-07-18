@@ -113,7 +113,6 @@ export function wrap(callback: Function): Function {
   return wrapZone(callback);
 }
 
-// TODO (bvaughn) Report the full stack of events, not just the top one.
 export function getCurrentEvents(): Array<Interaction> | null {
   if (!__PROFILE__) {
     return null;
