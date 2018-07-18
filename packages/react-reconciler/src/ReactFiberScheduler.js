@@ -35,6 +35,7 @@ import {
   HostComponent,
   ContextProvider,
   HostPortal,
+  Profiler,
 } from 'shared/ReactTypeOfWork';
 import {
   enableProfilerTimer,
@@ -48,6 +49,7 @@ import getComponentName from 'shared/getComponentName';
 import invariant from 'shared/invariant';
 import warning from 'shared/warning';
 
+import {popProfilerStateNode} from './ReactProfilerStack';
 import {
   scheduleTimeout,
   cancelTimeout,
@@ -303,6 +305,11 @@ if (__DEV__ && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
         break;
       case ContextProvider:
         popProvider(failedUnitOfWork);
+        break;
+      case Profiler:
+        if (enableProfilerTimer) {
+          popProfilerStateNode(failedUnitOfWork);
+        }
         break;
     }
     // Replay the begin phase.

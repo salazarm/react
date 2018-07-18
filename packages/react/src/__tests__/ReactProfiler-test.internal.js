@@ -530,9 +530,7 @@ describe('Profiler', () => {
           </React.unstable_Profiler>,
           {unstable_isAsync: true},
         );
-        expect(renderer.unstable_flushThrough(['Yield:2'])).toEqual([
-          'Yield:2',
-        ]);
+        renderer.unstable_flushThrough(['Yield:2']);
         expect(callback).toHaveBeenCalledTimes(0);
 
         // Resume render for remaining children.
@@ -570,9 +568,7 @@ describe('Profiler', () => {
           </React.unstable_Profiler>,
           {unstable_isAsync: true},
         );
-        expect(renderer.unstable_flushThrough(['Yield:5'])).toEqual([
-          'Yield:5',
-        ]);
+        renderer.unstable_flushThrough(['Yield:5']);
         expect(callback).toHaveBeenCalledTimes(0);
 
         // Simulate time moving forward while frame is paused.
@@ -619,9 +615,7 @@ describe('Profiler', () => {
           </React.unstable_Profiler>,
           {unstable_isAsync: true},
         );
-        expect(renderer.unstable_flushThrough(['Yield:10'])).toEqual([
-          'Yield:10',
-        ]);
+        renderer.unstable_flushThrough(['Yield:10']);
         expect(callback).toHaveBeenCalledTimes(0);
 
         // Simulate time moving forward while frame is paused.
@@ -697,18 +691,14 @@ describe('Profiler', () => {
             <Yield renderTime={9} />
           </React.unstable_Profiler>,
         );
-        expect(renderer.unstable_flushThrough(['Yield:3'])).toEqual([
-          'Yield:3',
-        ]);
+        renderer.unstable_flushThrough(['Yield:3']);
         expect(callback).toHaveBeenCalledTimes(0);
 
         // Simulate time moving forward while frame is paused.
         advanceTimeBy(100); // 59 -> 159
 
         // Render another 5ms of simulated time.
-        expect(renderer.unstable_flushThrough(['Yield:5'])).toEqual([
-          'Yield:5',
-        ]);
+        renderer.unstable_flushThrough(['Yield:5']);
         expect(callback).toHaveBeenCalledTimes(0);
 
         // Simulate time moving forward while frame is paused.
@@ -736,7 +726,7 @@ describe('Profiler', () => {
         expect(call[4]).toBe(264); // start time
         expect(call[5]).toBe(275); // commit time
 
-        // Verify no more unexpected callbacks from low priority work
+        // Verify no more unexpected callbacks from low
         renderer.unstable_flushAll([]);
         expect(callback).toHaveBeenCalledTimes(1);
       });
@@ -804,9 +794,7 @@ describe('Profiler', () => {
         // Render a partially update, but don't finish.
         // This partial render will take 10ms of actual render time.
         first.setState({renderTime: 10});
-        expect(renderer.unstable_flushThrough(['FirstComponent:10'])).toEqual([
-          'FirstComponent:10',
-        ]);
+        renderer.unstable_flushThrough(['FirstComponent:10']);
         expect(callback).toHaveBeenCalledTimes(0);
 
         // Simulate time moving forward while frame is paused.
@@ -1202,8 +1190,6 @@ describe('Profiler', () => {
         didRunCallback = true;
       });
 
-      jest.runAllTimers();
-
       expect(didRunCallback).toBe(true);
 
       onRender.mockClear();
@@ -1253,6 +1239,8 @@ describe('Profiler', () => {
         {unstable_isAsync: true},
       );
 
+      // TODO (bvaughn) Track context for mount as well
+
       // Initial mount.
       renderer.unstable_flushAll(['FirstComponent', 'SecondComponent']);
 
@@ -1265,9 +1253,7 @@ describe('Profiler', () => {
       InteractionTracking.track('lowPri', () => {
         // Render a partially update, but don't finish.
         first.setState({count: 1});
-        expect(renderer.unstable_flushThrough(['FirstComponent'])).toEqual([
-          'FirstComponent',
-        ]);
+        renderer.unstable_flushThrough(['FirstComponent']);
         expect(onRender).not.toHaveBeenCalled();
 
         advanceTimeBy(100);
@@ -1305,6 +1291,104 @@ describe('Profiler', () => {
         expect(call[0]).toEqual('test');
         expect(call[5]).toEqual(mockNow());
         expect(call[6][0]).toEqual({name: 'lowPri', timestamp: lowPriTime});
+      });
+    });
+
+    it('should track work spawned by a commit phase lifecycles and setState callbacks', () => {
+      let instance;
+      class Example extends React.Component {
+        state = {
+          count: 0,
+        };
+        componentDidUpdate(prevProps, prevState) {
+          if (this.state.count === 1 && prevState.count === 0) {
+            advanceTimeBy(10); // Advance timer to keep commits separate
+            this.setState({count: 2}); // Intentional cascading update
+          }
+        }
+        render() {
+          instance = this;
+          renderer.unstable_yield('Example:' + this.state.count);
+          return null;
+        }
+      }
+
+      // TODO (bvaughn) Track context for cascading updates in mount as well
+
+      // Initial mount.
+      const onRender = jest.fn();
+      const renderer = ReactTestRenderer.create(
+        <React.unstable_Profiler id="test" onRender={onRender}>
+          <Example />
+        </React.unstable_Profiler>,
+        {unstable_isAsync: true},
+      );
+      renderer.unstable_flushAll(['Example:0']);
+      onRender.mockClear();
+
+      // Cause an tracked, async update
+      let trackedEventTime = mockNow();
+      InteractionTracking.track('componentDidUpdate test', () => {
+        instance.setState({count: 1});
+      });
+      expect(onRender).not.toHaveBeenCalled();
+
+      advanceTimeBy(5);
+
+      // Flush async work (outside of tracked scope)
+      // This will cause an intentional cascading update from did-update
+      let firstCommitTime = mockNow();
+      renderer.unstable_flushAll(['Example:1', 'Example:2']);
+
+      // Verify the cascading commit is associated with the origin event
+      expect(onRender).toHaveBeenCalledTimes(2);
+      let call = onRender.mock.calls[0];
+      expect(call[0]).toEqual('test');
+      expect(call[5]).toEqual(firstCommitTime);
+      expect(call[6][0]).toEqual({
+        name: 'componentDidUpdate test',
+        timestamp: trackedEventTime,
+      });
+      call = onRender.mock.calls[1];
+      expect(call[0]).toEqual('test');
+      expect(call[5]).toEqual(mockNow());
+      expect(call[6][0]).toEqual({
+        name: 'componentDidUpdate test',
+        timestamp: trackedEventTime,
+      });
+
+      onRender.mockClear();
+
+      // Cause a cascading update from the setState callback
+      trackedEventTime = mockNow();
+      function callback() {
+        instance.setState({count: 4});
+      }
+      InteractionTracking.track('setState callback test', () => {
+        instance.setState({count: 3}, callback);
+      });
+      expect(onRender).not.toHaveBeenCalled();
+
+      // Flush async work (outside of tracked scope)
+      // This will cause an intentional cascading update from the setState callback
+      firstCommitTime = mockNow();
+      renderer.unstable_flushAll(['Example:3', 'Example:4']);
+
+      // Verify the cascading commit is associated with the origin event
+      expect(onRender).toHaveBeenCalledTimes(2);
+      call = onRender.mock.calls[0];
+      expect(call[0]).toEqual('test');
+      expect(call[5]).toEqual(firstCommitTime);
+      expect(call[6][0]).toEqual({
+        name: 'setState callback test',
+        timestamp: trackedEventTime,
+      });
+      call = onRender.mock.calls[1];
+      expect(call[0]).toEqual('test');
+      expect(call[5]).toEqual(mockNow());
+      expect(call[6][0]).toEqual({
+        name: 'setState callback test',
+        timestamp: trackedEventTime,
       });
     });
   });

@@ -91,6 +91,25 @@ export function addContext(name: string): void {
   }
 }
 
+// TODO (bvaughn) Write tests
+export function retrack(
+  events: Array<InteractionEvent>,
+  callback: Function,
+): void {
+  if (!__PROFILE__) {
+    callback();
+    return;
+  }
+
+  if (events.length === 0) {
+    callback();
+    return;
+  }
+
+  // TODO (bvaughn) Track all of these somehow, not just the top one.
+  trackZone(events[0], callback);
+}
+
 export function wrap(callback: Function): Function {
   if (!__PROFILE__) {
     return callback;
@@ -99,6 +118,7 @@ export function wrap(callback: Function): Function {
   return wrapZone(callback);
 }
 
+// TODO (bvaughn) Report the full stack of events, not just the top one.
 export function getCurrentEvent(): InteractionEvent | null {
   if (!__PROFILE__) {
     return null;

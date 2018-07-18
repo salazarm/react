@@ -14,6 +14,7 @@ import type {TypeOfMode} from './ReactTypeOfMode';
 import type {TypeOfSideEffect} from 'shared/ReactTypeOfSideEffect';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {UpdateQueue} from './ReactUpdateQueue';
+import type {InteractionEvent} from 'interaction-tracking/src/InteractionTracking';
 
 import invariant from 'shared/invariant';
 import {enableProfilerTimer} from 'shared/ReactFeatureFlags';
@@ -68,12 +69,16 @@ if (__DEV__) {
   }
 }
 
-// TODO (bvaughn) Document this type
-export type ProfilerEvent = {|
-  eventName: string,
-  expirationTime: ExpirationTime,
-  next: ProfilerEvent | null,
-  timestamp: number,
+type InteractionEventMap = Map<ExpirationTime, Set<InteractionEvent>>;
+
+// The Profiler's stateNode is only used by profiling builds (i.e. when enableProfilerTimer is true).
+// During the render phase, it populates a map of expiration timese to interactions,
+// Which the Profiler uses to determine which interactions are associated with a later commit.
+// During the commit phase, the related interactions are termporarily stored in an Array,
+// So that class components within the sub-tree can associate cascading updates with those events.
+export type ProfilerStateNode = {|
+  committedInteractionEvents: Array<InteractionEvent>,
+  pendingInteractionEventMap: InteractionEventMap,
 |};
 
 // A Fiber is work on a Component that needs to be done or was done. There can
@@ -181,10 +186,6 @@ export type Fiber = {|
   // This field is only set when the enableProfilerTimer flag is enabled.
   treeBaseDuration?: number,
 
-  // TODO (bvaughn) Document this field
-  firstProfilerEvent?: ProfilerEvent | null,
-  lastProfilerEvent?: ProfilerEvent | null,
-
   // Conceptual aliases
   // workInProgress : Fiber ->  alternate The alternate used for reuse happens
   // to be the same as work in progress.
@@ -244,8 +245,6 @@ function FiberNode(
     this.actualStartTime = 0;
     this.selfBaseDuration = 0;
     this.treeBaseDuration = 0;
-    this.firstProfilerEvent = null;
-    this.lastProfilerEvent = null;
   }
 
   if (__DEV__) {
@@ -354,8 +353,6 @@ export function createWorkInProgress(
   if (enableProfilerTimer) {
     workInProgress.selfBaseDuration = current.selfBaseDuration;
     workInProgress.treeBaseDuration = current.treeBaseDuration;
-    workInProgress.firstProfilerEvent = current.firstProfilerEvent;
-    workInProgress.lastProfilerEvent = current.lastProfilerEvent;
   }
 
   return workInProgress;
@@ -513,7 +510,10 @@ export function createFiberFromProfiler(
   if (enableProfilerTimer) {
     // Map of expiration time to interaction events.
     // Populated when state updates are enqueued during a tracked interaction.
-    fiber.stateNode = new Map();
+    fiber.stateNode = {
+      committedInteractionEvents: [],
+      pendingInteractionEventMap: new Map(),
+    };
   }
 
   return fiber;
@@ -593,8 +593,6 @@ export function assignFiberPropertiesInDEV(
     target.actualStartTime = source.actualStartTime;
     target.selfBaseDuration = source.selfBaseDuration;
     target.treeBaseDuration = source.treeBaseDuration;
-    target.firstProfilerEvent = source.firstProfilerEvent;
-    target.lastProfilerEvent = source.lastProfilerEvent;
   }
   target._debugID = source._debugID;
   target._debugSource = source._debugSource;

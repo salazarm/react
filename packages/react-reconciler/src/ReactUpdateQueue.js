@@ -84,9 +84,9 @@
 // regardless of priority. Intermediate state may vary according to system
 // resources, but the final state is always the same.
 
-import type {Fiber} from './ReactFiber';
+import type {Fiber, ProfilerStateNode} from './ReactFiber';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
-import type {InteractionEvent} from 'interaction-tracking/src/INteractionTracking';
+import type {InteractionEvent} from 'interaction-tracking/src/InteractionTracking';
 
 import {NoWork} from './ReactFiberExpirationTime';
 import {
@@ -247,17 +247,15 @@ export function enqueueUpdate<State>(
         while (current.return !== null) {
           current = current.return;
           if (current.type === REACT_PROFILER_TYPE) {
-            const expirationTimeMap = ((current.stateNode: any): Map<
-              ExpirationTime,
-              Set<InteractionEvent>,
-            >);
-            if (expirationTimeMap.has(expirationTime)) {
-              const set = ((expirationTimeMap.get(expirationTime): any): Set<
-                InteractionEvent,
-              >);
+            const profilerStateNode = ((current.stateNode: any): ProfilerStateNode);
+            const {pendingInteractionEventMap} = profilerStateNode;
+            if (pendingInteractionEventMap.has(expirationTime)) {
+              const set = ((pendingInteractionEventMap.get(
+                expirationTime,
+              ): any): Set<InteractionEvent>);
               set.add(currentInteractionEvent);
             } else {
-              expirationTimeMap.set(
+              pendingInteractionEventMap.set(
                 expirationTime,
                 new Set([currentInteractionEvent]),
               );

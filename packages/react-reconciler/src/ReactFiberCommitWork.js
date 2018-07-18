@@ -14,11 +14,10 @@ import type {
   ChildSet,
   UpdatePayload,
 } from './ReactFiberHostConfig';
-import type {Fiber} from './ReactFiber';
+import type {Fiber, ProfilerStateNode} from './ReactFiber';
 import type {FiberRoot} from './ReactFiberRoot';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {CapturedValue, CapturedError} from './ReactCapturedValue';
-import type {InteractionEvent} from 'interaction-tracking/src/INteractionTracking';
 
 import {enableProfilerTimer, enableSuspense} from 'shared/ReactFeatureFlags';
 import {
@@ -41,6 +40,7 @@ import {
 import getComponentName from 'shared/getComponentName';
 import invariant from 'shared/invariant';
 import warning from 'shared/warning';
+import {retrack} from 'interaction-tracking';
 
 import {Sync} from './ReactFiberExpirationTime';
 import {onCommitUnmount} from './ReactFiberDevToolsHook';
@@ -240,11 +240,30 @@ function commitLifeCycles(
     case ClassComponent: {
       const instance = finishedWork.stateNode;
       if (finishedWork.effectTag & Update) {
+        // Find any interaction events that were related to this commit.
+        let profilerStateNode: ProfilerStateNode | null = null;
+        if (enableProfilerTimer) {
+          if (instance.__reactInternalProfilerStateNode != null) {
+            profilerStateNode = ((instance.__reactInternalProfilerStateNode: any): ProfilerStateNode);
+          }
+        }
+
         if (current === null) {
           startPhaseTimer(finishedWork, 'componentDidMount');
           instance.props = finishedWork.memoizedProps;
           instance.state = finishedWork.memoizedState;
-          instance.componentDidMount();
+          if (enableProfilerTimer) {
+            // Profiling builds should wrap callback with interaction-tracking to associate cascading work
+            if (profilerStateNode !== null) {
+              retrack(profilerStateNode.committedInteractionEvents, () =>
+                instance.componentDidMount(),
+              );
+            } else {
+              instance.componentDidMount();
+            }
+          } else {
+            instance.componentDidMount();
+          }
           stopPhaseTimer();
         } else {
           const prevProps = current.memoizedProps;
@@ -252,11 +271,30 @@ function commitLifeCycles(
           startPhaseTimer(finishedWork, 'componentDidUpdate');
           instance.props = finishedWork.memoizedProps;
           instance.state = finishedWork.memoizedState;
-          instance.componentDidUpdate(
-            prevProps,
-            prevState,
-            instance.__reactInternalSnapshotBeforeUpdate,
-          );
+          if (enableProfilerTimer) {
+            // Profiling builds should wrap callback with interaction-tracking to associate cascading work
+            if (profilerStateNode !== null) {
+              retrack(profilerStateNode.committedInteractionEvents, () => {
+                instance.componentDidUpdate(
+                  prevProps,
+                  prevState,
+                  instance.__reactInternalSnapshotBeforeUpdate,
+                );
+              });
+            } else {
+              instance.componentDidUpdate(
+                prevProps,
+                prevState,
+                instance.__reactInternalSnapshotBeforeUpdate,
+              );
+            }
+          } else {
+            instance.componentDidUpdate(
+              prevProps,
+              prevState,
+              instance.__reactInternalSnapshotBeforeUpdate,
+            );
+          }
           stopPhaseTimer();
         }
       }
@@ -320,7 +358,11 @@ function commitLifeCycles(
       return;
     }
     case Profiler: {
-      // We have no life-cycles associated with Profiler.
+      if (enableProfilerTimer) {
+        // Clear the shared list of committed events.
+        // Any that resulted in cascading updates will have already been re-added to the pending map.
+        ((finishedWork.stateNode: any): ProfilerStateNode).committedInteractionEvents.length = 0;
+      }
       return;
     }
     case PlaceholderComponent: {
@@ -831,21 +873,32 @@ function commitWork(
     case Profiler: {
       if (enableProfilerTimer) {
         const onRender = finishedWork.memoizedProps.onRender;
-        const expirationTimeMap = ((finishedWork.stateNode: any): Map<
-          ExpirationTime,
-          Set<InteractionEvent>,
-        >);
+        const {
+          committedInteractionEvents,
+          pendingInteractionEventMap,
+        } = ((finishedWork.stateNode: any): ProfilerStateNode);
         const interactionEvents = [];
 
-        // Find any interaction events that were related to this commit.
-        expirationTimeMap.forEach((events, expirationTime) => {
+        // Find any interaction events that were related to this commit,
+        // And remove them from the pending Map (since they've now been committed).
+        // They'll be re-added to the Map later if they cause a cascading update.
+        pendingInteractionEventMap.forEach((events, expirationTime) => {
           if (expirationTime <= committedExpirationTime) {
             events.forEach(event => {
+              // Class components within this Profiler's sub-tree may have commit phase lifecycles.
+              // If thye cause cascading updates, React needs a way to associate them with the original events.
+              // Profiler temporarily shares these events with its descendants via an Array.
+              // During commitLifeCycles(), class components read from this Array,
+              // And the Profiler empties it once they are done.
+              committedInteractionEvents.push(event);
+
               interactionEvents.push({
                 name: event.name,
                 timestamp: event.timestamp,
               });
-              // TODO (bvaughn) Do we want this sort of flat reporting format?
+
+              // TODO (bvaughn) Do we want to flatten events and their added contexts like this?
+              // Probably not (at least not without a way to associate a context with its parent).
               let currentContext = event.firstContext;
               while (currentContext !== null) {
                 interactionEvents.push({
@@ -855,7 +908,10 @@ function commitWork(
                 currentContext = currentContext.nextContext;
               }
             });
-            expirationTimeMap.delete(expirationTime);
+
+            // Delete processed events so we don't log them again later.
+            // If they trigger a cascading update, they'll be re-added.
+            pendingInteractionEventMap.delete(expirationTime);
           }
         });
 

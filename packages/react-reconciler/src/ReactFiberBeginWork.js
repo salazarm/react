@@ -8,9 +8,10 @@
  */
 
 import type {ReactProviderType, ReactContext} from 'shared/ReactTypes';
-import type {Fiber} from 'react-reconciler/src/ReactFiber';
+import type {Fiber, ProfilerStateNode} from 'react-reconciler/src/ReactFiber';
 import type {FiberRoot} from './ReactFiberRoot';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
+
 import checkPropTypes from 'prop-types/checkPropTypes';
 
 import {
@@ -38,6 +39,10 @@ import {
   Update,
   Ref,
 } from 'shared/ReactTypeOfSideEffect';
+import {
+  getProfilerStateNode,
+  pushProfilerStateNode,
+} from './ReactProfilerStack';
 import ReactSharedInternals from 'shared/ReactSharedInternals';
 import {
   enableGetDerivedStateFromCatch,
@@ -52,7 +57,6 @@ import ReactStrictModeWarnings from './ReactStrictModeWarnings';
 import warning from 'shared/warning';
 import * as ReactCurrentFiber from './ReactCurrentFiber';
 import {cancelWorkTimer} from './ReactDebugFiberPerf';
-
 import {applyDerivedStateFromProps} from './ReactFiberClassComponent';
 import {
   mountChildFibers,
@@ -215,6 +219,10 @@ function updateProfiler(current, workInProgress) {
   const nextProps = workInProgress.pendingProps;
   if (enableProfilerTimer) {
     workInProgress.effectTag |= Update;
+    pushProfilerStateNode(
+      workInProgress,
+      ((workInProgress.stateNode: any): ProfilerStateNode),
+    );
   }
   if (workInProgress.memoizedProps === nextProps) {
     return bailoutOnAlreadyFinishedWork(current, workInProgress);
@@ -335,9 +343,12 @@ function finishClassComponent(
 
     return bailoutOnAlreadyFinishedWork(current, workInProgress);
   }
-
   const ctor = workInProgress.type;
   const instance = workInProgress.stateNode;
+
+  if (enableProfilerTimer) {
+    instance.__reactInternalProfilerStateNode = getProfilerStateNode();
+  }
 
   // Rerender
   ReactCurrentOwner.current = workInProgress;
@@ -1185,6 +1196,17 @@ function beginWork(
     workInProgress.expirationTime === NoWork ||
     workInProgress.expirationTime > renderExpirationTime
   ) {
+    if (enableProfilerTimer) {
+      // HACK Pushing the Profiler stateNode here prevents a mismatched pop in completeWork,
+      // But it's kind of gross; is th3ere a better way to handle this bailout case?
+      if (workInProgress.tag === Profiler) {
+        pushProfilerStateNode(
+          workInProgress,
+          ((workInProgress.stateNode: any): ProfilerStateNode),
+        );
+      }
+    }
+
     return bailoutOnLowPriority(current, workInProgress);
   }
 

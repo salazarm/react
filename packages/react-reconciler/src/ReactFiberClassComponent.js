@@ -15,6 +15,7 @@ import {Update, Snapshot} from 'shared/ReactTypeOfSideEffect';
 import {
   debugRenderPhaseSideEffects,
   debugRenderPhaseSideEffectsForStrictMode,
+  enableProfilerTimer,
   warnAboutDeprecatedLifecycles,
 } from 'shared/ReactFeatureFlags';
 import ReactStrictModeWarnings from './ReactStrictModeWarnings';
@@ -24,6 +25,7 @@ import shallowEqual from 'shared/shallowEqual';
 import getComponentName from 'shared/getComponentName';
 import invariant from 'shared/invariant';
 import warning from 'shared/warning';
+import {wrap} from 'interaction-tracking';
 
 import {startPhaseTimer, stopPhaseTimer} from './ReactDebugFiberPerf';
 import {StrictMode} from './ReactTypeOfMode';
@@ -180,7 +182,12 @@ const classComponentUpdater = {
       if (__DEV__) {
         warnOnInvalidCallback(callback, 'setState');
       }
-      update.callback = callback;
+      if (enableProfilerTimer) {
+        // Profiling builds should wrap callback with interaction-tracking to associate cascading work
+        update.callback = wrap(callback);
+      } else {
+        update.callback = callback;
+      }
     }
 
     enqueueUpdate(fiber, update, expirationTime);
@@ -199,7 +206,12 @@ const classComponentUpdater = {
       if (__DEV__) {
         warnOnInvalidCallback(callback, 'replaceState');
       }
-      update.callback = callback;
+      if (enableProfilerTimer) {
+        // Profiling builds should wrap callback with interaction-tracking to associate cascading work
+        update.callback = wrap(callback);
+      } else {
+        update.callback = callback;
+      }
     }
 
     enqueueUpdate(fiber, update, expirationTime);
@@ -217,7 +229,12 @@ const classComponentUpdater = {
       if (__DEV__) {
         warnOnInvalidCallback(callback, 'forceUpdate');
       }
-      update.callback = callback;
+      if (enableProfilerTimer) {
+        // Profiling builds should wrap callback with interaction-tracking to associate cascading work
+        update.callback = wrap(callback);
+      } else {
+        update.callback = callback;
+      }
     }
 
     enqueueUpdate(fiber, update, expirationTime);
