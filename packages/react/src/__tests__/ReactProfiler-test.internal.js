@@ -1133,7 +1133,6 @@ describe('Profiler', () => {
       }
 
       const onRender = jest.fn();
-
       const renderer = ReactTestRenderer.create(
         <React.unstable_Profiler id="test-profiler" onRender={onRender}>
           <Example />
@@ -1143,20 +1142,35 @@ describe('Profiler', () => {
         },
       );
 
+      advanceTimeBy(1);
+
       // Mount
-      renderer.unstable_flushAll(['first', 'last']);
+      const creationEventTime = mockNow();
+      InteractionTracking.track('creation event', () => {
+        renderer.unstable_flushAll(['first', 'last']);
+      });
+
+      expect(onRender).toHaveBeenCalledTimes(1);
+      let call = onRender.mock.calls[0];
+      expect(call[0]).toEqual('test-profiler');
+      expect(call[5]).toEqual(mockNow());
+      expect(call[6]).toEqual([
+        {children: null, name: 'creation event', timestamp: creationEventTime},
+      ]);
 
       onRender.mockClear();
+
+      advanceTimeBy(3);
 
       let didRunCallback = false;
 
       const initialEventTime = mockNow();
       InteractionTracking.track('initial event', () => {
-        advanceTimeBy(1);
+        advanceTimeBy(5);
         const firstUpdateTime = mockNow();
         InteractionTracking.addContext('first update');
 
-        advanceTimeBy(2);
+        advanceTimeBy(9);
         const secondUpdateTime = mockNow();
         InteractionTracking.addContext('second update');
         expect(onRender).not.toHaveBeenCalled();
@@ -1172,7 +1186,7 @@ describe('Profiler', () => {
         renderer.unstable_flushAll(['last']);
         expect(onRender).toHaveBeenCalledTimes(1);
 
-        const [call] = onRender.mock.calls;
+        call = onRender.mock.calls[0];
         expect(call[0]).toEqual('test-profiler');
         expect(call[5]).toEqual(mockNow());
         expect(call[6]).toEqual([
@@ -1201,17 +1215,44 @@ describe('Profiler', () => {
 
       onRender.mockClear();
 
-      advanceTimeBy(5);
+      advanceTimeBy(17);
 
       // Verify that updating state again does not re-log our interaction.
       instance.setState({count: 3});
       renderer.unstable_flushAll(['first', 'last']);
 
       expect(onRender).toHaveBeenCalledTimes(1);
-      const [call] = onRender.mock.calls;
+      call = onRender.mock.calls[0];
       expect(call[0]).toEqual('test-profiler');
       expect(call[5]).toEqual(mockNow());
       expect(call[6]).toHaveLength(0);
+
+      advanceTimeBy(3);
+
+      onRender.mockClear();
+
+      // Verify that root updates are also associated with tracked events.
+      renderer.update(
+        <React.unstable_Profiler id="test-profiler" onRender={onRender}>
+          <Example />
+        </React.unstable_Profiler>,
+      );
+      const rootUpdateEventTime = mockNow();
+      InteractionTracking.track('root update event', () => {
+        renderer.unstable_flushAll(['first', 'last']);
+      });
+
+      expect(onRender).toHaveBeenCalledTimes(1);
+      call = onRender.mock.calls[0];
+      expect(call[0]).toEqual('test-profiler');
+      expect(call[5]).toEqual(mockNow());
+      expect(call[6]).toEqual([
+        {
+          children: null,
+          name: 'root update event',
+          timestamp: rootUpdateEventTime,
+        },
+      ]);
     });
 
     it('should report the expected times when a high-priority update interrupts a low-priority update', () => {
@@ -1245,8 +1286,6 @@ describe('Profiler', () => {
         </React.unstable_Profiler>,
         {unstable_isAsync: true},
       );
-
-      // TODO (bvaughn) Track context for mount as well
 
       // Initial mount.
       renderer.unstable_flushAll(['FirstComponent', 'SecondComponent']);
@@ -1312,10 +1351,14 @@ describe('Profiler', () => {
         state = {
           count: 0,
         };
+        componentDidMount() {
+          advanceTimeBy(10); // Advance timer to keep commits separate
+          this.setState({count: 1}); // Intentional cascading update
+        }
         componentDidUpdate(prevProps, prevState) {
-          if (this.state.count === 1 && prevState.count === 0) {
+          if (this.state.count === 2 && prevState.count === 1) {
             advanceTimeBy(10); // Advance timer to keep commits separate
-            this.setState({count: 2}); // Intentional cascading update
+            this.setState({count: 3}); // Intentional cascading update
           }
         }
         render() {
@@ -1325,8 +1368,6 @@ describe('Profiler', () => {
         }
       }
 
-      // TODO (bvaughn) Track context for cascading updates in mount as well
-
       // Initial mount.
       const onRender = jest.fn();
       const renderer = ReactTestRenderer.create(
@@ -1335,13 +1376,41 @@ describe('Profiler', () => {
         </React.unstable_Profiler>,
         {unstable_isAsync: true},
       );
-      renderer.unstable_flushAll(['Example:0']);
+
+      let firstCommitTime = mockNow();
+      let trackedEventTime = mockNow();
+      InteractionTracking.track('componentDidMount test', () => {
+        renderer.unstable_flushAll(['Example:0', 'Example:1']);
+      });
+
+      expect(onRender).toHaveBeenCalledTimes(2);
+      let call = onRender.mock.calls[0];
+      expect(call[0]).toEqual('test');
+      expect(call[5]).toEqual(firstCommitTime);
+      expect(call[6]).toEqual([
+        {
+          children: null,
+          name: 'componentDidMount test',
+          timestamp: trackedEventTime,
+        },
+      ]);
+      call = onRender.mock.calls[1];
+      expect(call[0]).toEqual('test');
+      expect(call[5]).toEqual(mockNow());
+      expect(call[6]).toEqual([
+        {
+          children: null,
+          name: 'componentDidMount test',
+          timestamp: trackedEventTime,
+        },
+      ]);
+
       onRender.mockClear();
 
       // Cause an tracked, async update
-      let trackedEventTime = mockNow();
+      trackedEventTime = mockNow();
       InteractionTracking.track('componentDidUpdate test', () => {
-        instance.setState({count: 1});
+        instance.setState({count: 2});
       });
       expect(onRender).not.toHaveBeenCalled();
 
@@ -1349,12 +1418,12 @@ describe('Profiler', () => {
 
       // Flush async work (outside of tracked scope)
       // This will cause an intentional cascading update from did-update
-      let firstCommitTime = mockNow();
-      renderer.unstable_flushAll(['Example:1', 'Example:2']);
+      firstCommitTime = mockNow();
+      renderer.unstable_flushAll(['Example:2', 'Example:3']);
 
       // Verify the cascading commit is associated with the origin event
       expect(onRender).toHaveBeenCalledTimes(2);
-      let call = onRender.mock.calls[0];
+      call = onRender.mock.calls[0];
       expect(call[0]).toEqual('test');
       expect(call[5]).toEqual(firstCommitTime);
       expect(call[6]).toEqual([
@@ -1380,17 +1449,17 @@ describe('Profiler', () => {
       // Cause a cascading update from the setState callback
       trackedEventTime = mockNow();
       function callback() {
-        instance.setState({count: 4});
+        instance.setState({count: 6});
       }
       InteractionTracking.track('setState callback test', () => {
-        instance.setState({count: 3}, callback);
+        instance.setState({count: 5}, callback);
       });
       expect(onRender).not.toHaveBeenCalled();
 
       // Flush async work (outside of tracked scope)
       // This will cause an intentional cascading update from the setState callback
       firstCommitTime = mockNow();
-      renderer.unstable_flushAll(['Example:3', 'Example:4']);
+      renderer.unstable_flushAll(['Example:5', 'Example:6']);
 
       // Verify the cascading commit is associated with the origin event
       expect(onRender).toHaveBeenCalledTimes(2);
