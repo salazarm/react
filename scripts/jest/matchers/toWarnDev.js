@@ -1,6 +1,7 @@
 'use strict';
 
 const jestDiff = require('jest-diff');
+const util = require('util');
 
 function normalizeCodeLocInfo(str) {
   return str && str.replace(/at .+?:\d+/g, 'at **');
@@ -18,11 +19,30 @@ const createMatcherFor = consoleMethod =>
             `but was given ${typeof expectedMessages}.`
         );
       }
+      if (
+        options != null &&
+        (typeof options !== 'object' || Array.isArray(options))
+      ) {
+        throw new Error(
+          'toWarnDev() second argument, when present, should be an object. ' +
+            'Did you forget to wrap the messages into an array?'
+        );
+      }
+      if (arguments.length > 3) {
+        // `matcher` comes from Jest, so it's more than 2 in practice
+        throw new Error(
+          'toWarnDev() received more than two arguments. ' +
+            'Did you forget to wrap the messages into an array?'
+        );
+      }
 
       const withoutStack = options.withoutStack;
       const warningsWithoutComponentStack = [];
       const warningsWithComponentStack = [];
       const unexpectedWarnings = [];
+
+      let lastWarningWithMismatchingFormat = null;
+      let lastWarningWithExtraComponentStack = null;
 
       // Catch errors thrown by the callback,
       // But only rethrow them if all test expectations have been satisfied.
@@ -30,8 +50,37 @@ const createMatcherFor = consoleMethod =>
       // and result in a test that passes when it shouldn't.
       let caughtError;
 
-      const consoleSpy = message => {
+      const isLikelyAComponentStack = message =>
+        typeof message === 'string' && message.includes('\n    in ');
+
+      const consoleSpy = (format, ...args) => {
+        const message = util.format(format, ...args);
         const normalizedMessage = normalizeCodeLocInfo(message);
+
+        // Remember if the number of %s interpolations
+        // doesn't match the number of arguments.
+        // We'll fail the test if it happens.
+        let argIndex = 0;
+        format.replace(/%s/g, () => argIndex++);
+        if (argIndex !== args.length) {
+          lastWarningWithMismatchingFormat = {
+            format,
+            args,
+            expectedArgCount: argIndex,
+          };
+        }
+
+        // Protect against accidentally passing a component stack
+        // to warning() which already injects the component stack.
+        if (
+          args.length >= 2 &&
+          isLikelyAComponentStack(args[args.length - 1]) &&
+          isLikelyAComponentStack(args[args.length - 2])
+        ) {
+          lastWarningWithExtraComponentStack = {
+            format,
+          };
+        }
 
         for (let index = 0; index < expectedMessages.length; index++) {
           const expectedMessage = expectedMessages[index];
@@ -39,7 +88,7 @@ const createMatcherFor = consoleMethod =>
             normalizedMessage === expectedMessage ||
             normalizedMessage.includes(expectedMessage)
           ) {
-            if (normalizedMessage.includes('\n    in ')) {
+            if (isLikelyAComponentStack(normalizedMessage)) {
               warningsWithComponentStack.push(normalizedMessage);
             } else {
               warningsWithoutComponentStack.push(normalizedMessage);
@@ -160,6 +209,32 @@ const createMatcherFor = consoleMethod =>
               `Instead received ${typeof withoutStack}.`
           );
         }
+
+        if (lastWarningWithMismatchingFormat !== null) {
+          return {
+            message: () =>
+              `Received ${
+                lastWarningWithMismatchingFormat.args.length
+              } arguments for a message with ${
+                lastWarningWithMismatchingFormat.expectedArgCount
+              } placeholders:\n  ${this.utils.printReceived(
+                lastWarningWithMismatchingFormat.format
+              )}`,
+            pass: false,
+          };
+        }
+
+        if (lastWarningWithExtraComponentStack !== null) {
+          return {
+            message: () =>
+              `Received more than one component stack for a warning:\n  ${this.utils.printReceived(
+                lastWarningWithExtraComponentStack.format
+              )}\nDid you accidentally pass a stack to warning() as the last argument? ` +
+              `Don't forget warning() already injects the component stack automatically.`,
+            pass: false,
+          };
+        }
+
         return {pass: true};
       }
     } else {

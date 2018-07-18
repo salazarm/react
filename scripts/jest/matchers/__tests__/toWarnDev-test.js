@@ -147,5 +147,73 @@ describe('toWarnDev', () => {
         }).toWarnDev('Hi', {withoutStack: 'haha'});
       }).toThrow('Instead received string');
     });
+
+    it('fails if the argument number does not match', () => {
+      expect(() => {
+        expect(() => {
+          console.error('Hi %s', 'Sara', 'extra');
+        }).toWarnDev('Hi', {withoutStack: true});
+      }).toThrow('Received 2 arguments for a message with 1 placeholders');
+
+      expect(() => {
+        expect(() => {
+          console.error('Hi %s');
+        }).toWarnDev('Hi', {withoutStack: true});
+      }).toThrow('Received 0 arguments for a message with 1 placeholders');
+    });
+
+    it('fails if stack is passed twice', () => {
+      expect(() => {
+        expect(() => {
+          console.error('Hi %s%s', '\n    in div', '\n    in div');
+        }).toWarnDev('Hi');
+      }).toThrow('Received more than one component stack for a warning');
+    });
+
+    it('fails if multiple strings are passed without an array wrapper', () => {
+      expect(() => {
+        expect(() => {
+          console.error('Hi \n    in div');
+        }).toWarnDev('Hi', 'Bye');
+      }).toThrow(
+        'toWarnDev() second argument, when present, should be an object'
+      );
+      expect(() => {
+        expect(() => {
+          console.error('Hi \n    in div');
+          console.error('Bye \n    in div');
+        }).toWarnDev('Hi', 'Bye');
+      }).toThrow(
+        'toWarnDev() second argument, when present, should be an object'
+      );
+      expect(() => {
+        expect(() => {
+          console.error('Hi \n    in div');
+          console.error('Wow \n    in div');
+          console.error('Bye \n    in div');
+        }).toWarnDev('Hi', 'Bye');
+      }).toThrow(
+        'toWarnDev() second argument, when present, should be an object'
+      );
+      expect(() => {
+        expect(() => {
+          console.error('Hi \n    in div');
+          console.error('Wow \n    in div');
+          console.error('Bye \n    in div');
+        }).toWarnDev('Hi', 'Wow', 'Bye');
+      }).toThrow(
+        'toWarnDev() second argument, when present, should be an object'
+      );
+    });
+
+    it('fails on more than two arguments', () => {
+      expect(() => {
+        expect(() => {
+          console.error('Hi \n    in div');
+          console.error('Wow \n    in div');
+          console.error('Bye \n    in div');
+        }).toWarnDev('Hi', undefined, 'Bye');
+      }).toThrow('toWarnDev() received more than two arguments.');
+    });
   }
 });

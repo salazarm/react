@@ -39,8 +39,8 @@ import {
 } from 'shared/ReactTypeOfSideEffect';
 import getComponentName from 'shared/getComponentName';
 import invariant from 'shared/invariant';
-import warning from 'shared/warning';
 import {retrack} from 'interaction-tracking';
+import warningWithoutStack from 'shared/warningWithoutStack';
 
 import {Sync} from './ReactFiberExpirationTime';
 import {onCommitUnmount} from './ReactFiberDevToolsHook';
@@ -200,7 +200,7 @@ function commitBeforeMutationLifeCycles(
             >);
             if (snapshot === undefined && !didWarnSet.has(finishedWork.type)) {
               didWarnSet.add(finishedWork.type);
-              warning(
+              warningWithoutStack(
                 false,
                 '%s.getSnapshotBeforeUpdate(): A snapshot value (or null) ' +
                   'must be returned. You have returned undefined.',
@@ -411,7 +411,7 @@ function commitAttachRef(finishedWork: Fiber) {
     } else {
       if (__DEV__) {
         if (!ref.hasOwnProperty('current')) {
-          warning(
+          warningWithoutStack(
             false,
             'Unexpected ref object provided for %s. ' +
               'Use either a ref-setter function or React.createRef().%s',
@@ -441,9 +441,7 @@ function commitDetachRef(current: Fiber) {
 // deletion, so don't let them throw. Host-originating errors should
 // interrupt deletion, so it's okay
 function commitUnmount(current: Fiber): void {
-  if (typeof onCommitUnmount === 'function') {
-    onCommitUnmount(current);
-  }
+  onCommitUnmount(current);
 
   switch (current.tag) {
     case ClassComponent: {
@@ -641,8 +639,11 @@ function commitPlacement(finishedWork: Fiber): void {
 
   // Recursively insert all host nodes into the parent.
   const parentFiber = getHostParentFiber(finishedWork);
+
+  // Note: these two variables *must* always be updated together.
   let parent;
   let isContainer;
+
   switch (parentFiber.tag) {
     case HostComponent:
       parent = parentFiber.stateNode;
@@ -713,13 +714,15 @@ function commitPlacement(finishedWork: Fiber): void {
 }
 
 function unmountHostComponents(current): void {
-  // We only have the top Fiber that was inserted but we need recurse down its
+  // We only have the top Fiber that was deleted but we need recurse down its
   // children to find all the terminal nodes.
   let node: Fiber = current;
 
   // Each iteration, currentParent is populated with node's host parent if not
   // currentParentIsValid.
   let currentParentIsValid = false;
+
+  // Note: these two variables *must* always be updated together.
   let currentParent;
   let currentParentIsContainer;
 
@@ -765,6 +768,7 @@ function unmountHostComponents(current): void {
       // When we go into a portal, it becomes the parent to remove from.
       // We will reassign it back when we pop the portal on the way up.
       currentParent = node.stateNode.containerInfo;
+      currentParentIsContainer = true;
       // Visit children because portals might contain host components.
       if (node.child !== null) {
         node.child.return = node;

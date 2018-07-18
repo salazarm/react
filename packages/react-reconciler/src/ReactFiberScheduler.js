@@ -47,7 +47,7 @@ import {
 } from 'shared/ReactFeatureFlags';
 import getComponentName from 'shared/getComponentName';
 import invariant from 'shared/invariant';
-import warning from 'shared/warning';
+import warningWithoutStack from 'shared/warningWithoutStack';
 
 import {popProfilerStateNode} from './ReactProfilerStack';
 import {
@@ -181,7 +181,7 @@ if (__DEV__) {
     if (didWarnStateUpdateForUnmountedComponent[componentName]) {
       return;
     }
-    warning(
+    warningWithoutStack(
       false,
       "Can't call setState (or forceUpdate) on an unmounted component. This " +
         'is a no-op, but it indicates a memory leak in your application. To ' +
@@ -198,7 +198,7 @@ if (__DEV__) {
         if (didWarnSetStateChildContext) {
           return;
         }
-        warning(
+        warningWithoutStack(
           false,
           'setState(...): Cannot call setState() inside getChildContext()',
         );
@@ -208,7 +208,7 @@ if (__DEV__) {
         if (didWarnAboutStateTransition) {
           return;
         }
-        warning(
+        warningWithoutStack(
           false,
           'Cannot update during an existing state transition (such as within ' +
             "`render` or another component's constructor). Render methods should " +
@@ -277,7 +277,7 @@ if (__DEV__ && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
     // Restore the original state of the work-in-progress
     if (stashedWorkInProgressProperties === null) {
       // This should never happen. Don't throw because this code is DEV-only.
-      warning(
+      warningWithoutStack(
         false,
         'Could not replay rendering after an error. This is likely a bug in React. ' +
           'Please file an issue.',
@@ -435,8 +435,11 @@ function commitAllHostEffects(committedExpirationTime: ExpirationTime) {
 
 function commitBeforeMutationLifecycles() {
   while (nextEffect !== null) {
-    const effectTag = nextEffect.effectTag;
+    if (__DEV__) {
+      ReactCurrentFiber.setCurrentFiber(nextEffect);
+    }
 
+    const effectTag = nextEffect.effectTag;
     if (effectTag & Snapshot) {
       recordEffect();
       const current = nextEffect.alternate;
@@ -446,6 +449,10 @@ function commitBeforeMutationLifecycles() {
     // Don't cleanup effects yet;
     // This will be done by commitAllLifeCycles()
     nextEffect = nextEffect.nextEffect;
+  }
+
+  if (__DEV__) {
+    ReactCurrentFiber.resetCurrentFiber();
   }
 }
 
@@ -705,9 +712,7 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
   isWorking = false;
   stopCommitLifeCyclesTimer();
   stopCommitTimer();
-  if (typeof onCommitRoot === 'function') {
-    onCommitRoot(finishedWork.stateNode);
-  }
+  onCommitRoot(finishedWork.stateNode);
   if (__DEV__ && ReactFiberInstrumentation.debugTool) {
     ReactFiberInstrumentation.debugTool.onCommitWork(finishedWork);
   }

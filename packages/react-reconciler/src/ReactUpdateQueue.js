@@ -107,7 +107,7 @@ import {ProfileMode, StrictMode} from './ReactTypeOfMode';
 import {getCurrentEvents} from 'interaction-tracking';
 
 import invariant from 'shared/invariant';
-import warning from 'shared/warning';
+import warningWithoutStack from 'shared/warningWithoutStack';
 
 export type Update<State> = {
   expirationTime: ExpirationTime,
@@ -328,7 +328,7 @@ export function enqueueUpdate<State>(
         (queue2 !== null && currentlyProcessingQueue === queue2)) &&
       !didWarnUpdateInsideUpdate
     ) {
-      warning(
+      warningWithoutStack(
         false,
         'An update (setState, replaceState, or forceUpdate) was scheduled ' +
           'from inside an update function. Update functions should be pure, ' +

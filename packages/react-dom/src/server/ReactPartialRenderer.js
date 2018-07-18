@@ -19,6 +19,7 @@ import invariant from 'shared/invariant';
 import getComponentName from 'shared/getComponentName';
 import lowPriorityWarning from 'shared/lowPriorityWarning';
 import warning from 'shared/warning';
+import warningWithoutStack from 'shared/warningWithoutStack';
 import checkPropTypes from 'prop-types/checkPropTypes';
 import describeComponentFrame from 'shared/describeComponentFrame';
 import ReactSharedInternals from 'shared/ReactSharedInternals';
@@ -203,7 +204,7 @@ function createMarkupForStyles(styles): string | null {
     const styleValue = styles[styleName];
     if (__DEV__) {
       if (!isCustomProperty) {
-        warnValidStyle(styleName, styleValue, getCurrentServerStackImpl);
+        warnValidStyle(styleName, styleValue);
       }
     }
     if (styleValue != null) {
@@ -233,7 +234,7 @@ function warnNoop(
       return;
     }
 
-    warning(
+    warningWithoutStack(
       false,
       '%s(...): Can only update a mounting component. ' +
         'This usually means you called %s() outside componentWillMount() on the server. ' +
@@ -298,7 +299,7 @@ function flattenOptionChildren(children: mixed): ?string {
       if (__DEV__) {
         if (!didWarnInvalidOptionChildren) {
           didWarnInvalidOptionChildren = true;
-          warning(
+          warningWithoutStack(
             false,
             'Only strings and numbers are supported as <option> children.',
           );
@@ -472,7 +473,7 @@ function resolve(
           if (inst.state === null || inst.state === undefined) {
             const componentName = getComponentName(Component) || 'Unknown';
             if (!didWarnAboutUninitializedState[componentName]) {
-              warning(
+              warningWithoutStack(
                 false,
                 '%s: Did not properly initialize state during construction. ' +
                   'Expected state to be an object, but it was %s.',
@@ -494,7 +495,7 @@ function resolve(
           if (partialState === undefined) {
             const componentName = getComponentName(Component) || 'Unknown';
             if (!didWarnAboutUndefinedDerivedState[componentName]) {
-              warning(
+              warningWithoutStack(
                 false,
                 '%s.getDerivedStateFromProps(): A valid state object (or null) must be returned. ' +
                   'You have returned undefined.',
@@ -518,7 +519,7 @@ function resolve(
           const componentName = getComponentName(Component) || 'Unknown';
 
           if (!didWarnAboutBadClass[componentName]) {
-            warning(
+            warningWithoutStack(
               false,
               "The <%s /> component appears to have a render method, but doesn't extend React.Component. " +
                 'This is likely to cause errors. Change %s to extend React.Component instead.',
@@ -645,7 +646,7 @@ function resolve(
           );
         }
       } else {
-        warning(
+        warningWithoutStack(
           false,
           '%s.getChildContext(): childContextTypes must be defined in order to ' +
             'use getChildContext().',
@@ -747,7 +748,7 @@ class ReactDOMServerRenderer {
   popProvider<T>(provider: ReactProvider<T>): void {
     const index = this.contextIndex;
     if (__DEV__) {
-      warning(
+      warningWithoutStack(
         index > -1 && provider === (this.contextProviderStack: any)[index],
         'Unexpected pop.',
       );
@@ -1037,11 +1038,7 @@ class ReactDOMServerRenderer {
     let props = element.props;
     if (tag === 'input') {
       if (__DEV__) {
-        ReactControlledValuePropTypes.checkPropTypes(
-          'input',
-          props,
-          getCurrentServerStackImpl,
-        );
+        ReactControlledValuePropTypes.checkPropTypes('input', props);
 
         if (
           props.checked !== undefined &&
@@ -1095,11 +1092,7 @@ class ReactDOMServerRenderer {
       );
     } else if (tag === 'textarea') {
       if (__DEV__) {
-        ReactControlledValuePropTypes.checkPropTypes(
-          'textarea',
-          props,
-          getCurrentServerStackImpl,
-        );
+        ReactControlledValuePropTypes.checkPropTypes('textarea', props);
         if (
           props.value !== undefined &&
           props.defaultValue !== undefined &&
@@ -1156,11 +1149,7 @@ class ReactDOMServerRenderer {
       });
     } else if (tag === 'select') {
       if (__DEV__) {
-        ReactControlledValuePropTypes.checkPropTypes(
-          'select',
-          props,
-          getCurrentServerStackImpl,
-        );
+        ReactControlledValuePropTypes.checkPropTypes('select', props);
 
         for (let i = 0; i < valuePropNames.length; i++) {
           const propName = valuePropNames[i];
@@ -1172,17 +1161,15 @@ class ReactDOMServerRenderer {
             warning(
               false,
               'The `%s` prop supplied to <select> must be an array if ' +
-                '`multiple` is true.%s',
+                '`multiple` is true.',
               propName,
-              '', // getDeclarationErrorAddendum(),
             );
           } else if (!props.multiple && isArray) {
             warning(
               false,
               'The `%s` prop supplied to <select> must be a scalar ' +
-                'value if `multiple` is false.%s',
+                'value if `multiple` is false.',
               propName,
-              '', // getDeclarationErrorAddendum(),
             );
           }
         }
@@ -1250,7 +1237,7 @@ class ReactDOMServerRenderer {
       validatePropertiesInDevelopment(tag, props);
     }
 
-    assertValidProps(tag, props, getCurrentServerStackImpl);
+    assertValidProps(tag, props);
 
     let out = createOpenTagMarkup(
       element.type,

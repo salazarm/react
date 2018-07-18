@@ -8,12 +8,10 @@
  */
 
 // TODO: direct imports like some-package/src/* are bad. Fix me.
-import {
-  getCurrentFiberOwnerNameInDevOrNull,
-  getCurrentFiberStackInDev,
-} from 'react-reconciler/src/ReactCurrentFiber';
+import {getCurrentFiberOwnerNameInDevOrNull} from 'react-reconciler/src/ReactCurrentFiber';
 import {registrationNameModules} from 'events/EventPluginRegistry';
 import warning from 'shared/warning';
+import warningWithoutStack from 'shared/warningWithoutStack';
 
 import * as DOMPropertyOperations from './DOMPropertyOperations';
 import * as ReactDOMFiberInput from './ReactDOMFiberInput';
@@ -61,8 +59,6 @@ const HTML = '__html';
 
 const {html: HTML_NAMESPACE} = Namespaces;
 
-let getStackInDev = () => '';
-
 let warnedUnknownTags;
 let suppressHydrationWarning;
 
@@ -76,8 +72,6 @@ let normalizeMarkupForTextOrAttribute;
 let normalizeHTML;
 
 if (__DEV__) {
-  getStackInDev = getCurrentFiberStackInDev;
-
   warnedUnknownTags = {
     // Chrome is the only major browser not shipping <time>. But as of July
     // 2017 it intends to ship it due to widespread usage. We intentionally
@@ -123,7 +117,7 @@ if (__DEV__) {
       return;
     }
     didWarnInvalidHydration = true;
-    warning(
+    warningWithoutStack(
       false,
       'Text content did not match. Server: "%s" Client: "%s"',
       normalizedServerText,
@@ -149,7 +143,7 @@ if (__DEV__) {
       return;
     }
     didWarnInvalidHydration = true;
-    warning(
+    warningWithoutStack(
       false,
       'Prop `%s` did not match. Server: %s Client: %s',
       propName,
@@ -167,7 +161,7 @@ if (__DEV__) {
     attributeNames.forEach(function(name) {
       names.push(name);
     });
-    warning(false, 'Extra attributes from the server: %s', names);
+    warningWithoutStack(false, 'Extra attributes from the server: %s', names);
   };
 
   warnForInvalidEventListener = function(registrationName, listener) {
@@ -176,19 +170,17 @@ if (__DEV__) {
         false,
         'Expected `%s` listener to be a function, instead got `false`.\n\n' +
           'If you used to conditionally omit it with %s={condition && value}, ' +
-          'pass %s={condition ? value : undefined} instead.%s',
+          'pass %s={condition ? value : undefined} instead.',
         registrationName,
         registrationName,
         registrationName,
-        getCurrentFiberStackInDev(),
       );
     } else {
       warning(
         false,
-        'Expected `%s` listener to be a function, instead got a value of `%s` type.%s',
+        'Expected `%s` listener to be a function, instead got a value of `%s` type.',
         registrationName,
         typeof listener,
-        getCurrentFiberStackInDev(),
       );
     }
   };
@@ -266,11 +258,7 @@ function setInitialDOMProperties(
         }
       }
       // Relies on `updateStylesByID` not mutating `styleUpdates`.
-      CSSPropertyOperations.setValueForStyles(
-        domElement,
-        nextProp,
-        getStackInDev,
-      );
+      CSSPropertyOperations.setValueForStyles(domElement, nextProp);
     } else if (propKey === DANGEROUSLY_SET_INNER_HTML) {
       const nextHtml = nextProp ? nextProp[HTML] : undefined;
       if (nextHtml != null) {
@@ -326,11 +314,7 @@ function updateDOMProperties(
     const propKey = updatePayload[i];
     const propValue = updatePayload[i + 1];
     if (propKey === STYLE) {
-      CSSPropertyOperations.setValueForStyles(
-        domElement,
-        propValue,
-        getStackInDev,
-      );
+      CSSPropertyOperations.setValueForStyles(domElement, propValue);
     } else if (propKey === DANGEROUSLY_SET_INNER_HTML) {
       setInnerHTML(domElement, propValue);
     } else if (propKey === CHILDREN) {
@@ -523,7 +507,7 @@ export function setInitialProperties(
       props = rawProps;
   }
 
-  assertValidProps(tag, props, getStackInDev);
+  assertValidProps(tag, props);
 
   setInitialDOMProperties(
     tag,
@@ -611,7 +595,7 @@ export function diffProperties(
       break;
   }
 
-  assertValidProps(tag, nextProps, getStackInDev);
+  assertValidProps(tag, nextProps);
 
   let propKey;
   let styleName;
@@ -902,7 +886,7 @@ export function diffHydratedProperties(
       break;
   }
 
-  assertValidProps(tag, rawProps, getStackInDev);
+  assertValidProps(tag, rawProps);
 
   if (__DEV__) {
     extraAttributeNames = new Set();
@@ -1132,7 +1116,7 @@ export function warnForDeletedHydratableElement(
       return;
     }
     didWarnInvalidHydration = true;
-    warning(
+    warningWithoutStack(
       false,
       'Did not expect server HTML to contain a <%s> in <%s>.',
       child.nodeName.toLowerCase(),
@@ -1150,7 +1134,7 @@ export function warnForDeletedHydratableText(
       return;
     }
     didWarnInvalidHydration = true;
-    warning(
+    warningWithoutStack(
       false,
       'Did not expect server HTML to contain the text node "%s" in <%s>.',
       child.nodeValue,
@@ -1169,7 +1153,7 @@ export function warnForInsertedHydratedElement(
       return;
     }
     didWarnInvalidHydration = true;
-    warning(
+    warningWithoutStack(
       false,
       'Expected server HTML to contain a matching <%s> in <%s>.',
       tag,
@@ -1194,7 +1178,7 @@ export function warnForInsertedHydratedText(
       return;
     }
     didWarnInvalidHydration = true;
-    warning(
+    warningWithoutStack(
       false,
       'Expected server HTML to contain a matching text node for "%s" in <%s>.',
       text,
