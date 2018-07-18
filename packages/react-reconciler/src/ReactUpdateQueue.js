@@ -253,7 +253,9 @@ export function enqueueUpdate<State>(
 
             if (pendingInteractionMap.has(expirationTime)) {
               // eslint-disable-next-line no-var
-              var set = ((pendingInteractionMap.get(expirationTime): any): Set<Interaction>);
+              var set = ((pendingInteractionMap.get(expirationTime): any): Set<
+                Interaction,
+              >);
               interactions.forEach(interaction => set.add(interaction));
             } else {
               pendingInteractionMap.set(expirationTime, new Set(interactions));
