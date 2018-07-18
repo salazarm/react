@@ -14,7 +14,7 @@ import type {TypeOfMode} from './ReactTypeOfMode';
 import type {TypeOfSideEffect} from 'shared/ReactTypeOfSideEffect';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {UpdateQueue} from './ReactUpdateQueue';
-import type {InteractionEvent} from 'interaction-tracking/src/InteractionTracking';
+import type {Interaction} from 'interaction-tracking/src/InteractionTracking';
 
 import invariant from 'shared/invariant';
 import {enableProfilerTimer} from 'shared/ReactFeatureFlags';
@@ -69,7 +69,7 @@ if (__DEV__) {
   }
 }
 
-type InteractionEventMap = Map<ExpirationTime, Set<InteractionEvent>>;
+type InteractionMap = Map<ExpirationTime, Set<Interaction>>;
 
 // The Profiler's stateNode is only used by profiling builds (i.e. when enableProfilerTimer is true).
 // During the render phase, it populates a map of expiration timese to interactions,
@@ -77,8 +77,8 @@ type InteractionEventMap = Map<ExpirationTime, Set<InteractionEvent>>;
 // During the commit phase, the related interactions are termporarily stored in an Array,
 // So that class components within the sub-tree can associate cascading updates with those events.
 export type ProfilerStateNode = {|
-  committedInteractionEvents: Array<InteractionEvent>,
-  pendingInteractionEventMap: InteractionEventMap,
+  committedInteractions: Array<Interaction>,
+  pendingInteractionMap: InteractionMap,
 |};
 
 // A Fiber is work on a Component that needs to be done or was done. There can
@@ -511,8 +511,8 @@ export function createFiberFromProfiler(
     // Map of expiration time to interaction events.
     // Populated when state updates are enqueued during a tracked interaction.
     fiber.stateNode = {
-      committedInteractionEvents: [],
-      pendingInteractionEventMap: new Map(),
+      committedInteractions: [],
+      pendingInteractionMap: new Map(),
     };
   }
 

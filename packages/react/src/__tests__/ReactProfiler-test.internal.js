@@ -1173,19 +1173,24 @@ describe('Profiler', () => {
         const [call] = onRender.mock.calls;
         expect(call[0]).toEqual('test-profiler');
         expect(call[5]).toEqual(mockNow());
-        expect(call[6]).toHaveLength(3);
-        expect(call[6][0]).toEqual({
-          name: 'initial event',
-          timestamp: initialEventTime,
-        });
-        expect(call[6][1]).toEqual({
-          name: 'first update',
-          timestamp: firstUpdateTime,
-        });
-        expect(call[6][2]).toEqual({
-          name: 'second update',
-          timestamp: secondUpdateTime,
-        });
+        expect(call[6]).toEqual([
+          {
+            children: [
+              {
+                children: null,
+                name: 'first update',
+                timestamp: firstUpdateTime,
+              },
+              {
+                children: null,
+                name: 'second update',
+                timestamp: secondUpdateTime,
+              },
+            ],
+            name: 'initial event',
+            timestamp: initialEventTime,
+          },
+        ]);
 
         didRunCallback = true;
       });
@@ -1277,7 +1282,10 @@ describe('Profiler', () => {
         let call = onRender.mock.calls[0];
         expect(call[0]).toEqual('test');
         expect(call[5]).toEqual(mockNow());
-        expect(call[6][0]).toEqual({name: 'highPri', timestamp: highPriTime});
+        expect(call[6]).toEqual([
+          {children: null, name: 'lowPri', timestamp: lowPriTime},
+          {children: null, name: 'highPri', timestamp: highPriTime},
+        ]);
 
         onRender.mockClear();
 
@@ -1290,7 +1298,9 @@ describe('Profiler', () => {
         call = onRender.mock.calls[0];
         expect(call[0]).toEqual('test');
         expect(call[5]).toEqual(mockNow());
-        expect(call[6][0]).toEqual({name: 'lowPri', timestamp: lowPriTime});
+        expect(call[6]).toEqual([
+          {children: null, name: 'lowPri', timestamp: lowPriTime},
+        ]);
       });
     });
 
@@ -1345,17 +1355,23 @@ describe('Profiler', () => {
       let call = onRender.mock.calls[0];
       expect(call[0]).toEqual('test');
       expect(call[5]).toEqual(firstCommitTime);
-      expect(call[6][0]).toEqual({
-        name: 'componentDidUpdate test',
-        timestamp: trackedEventTime,
-      });
+      expect(call[6]).toEqual([
+        {
+          children: null,
+          name: 'componentDidUpdate test',
+          timestamp: trackedEventTime,
+        },
+      ]);
       call = onRender.mock.calls[1];
       expect(call[0]).toEqual('test');
       expect(call[5]).toEqual(mockNow());
-      expect(call[6][0]).toEqual({
-        name: 'componentDidUpdate test',
-        timestamp: trackedEventTime,
-      });
+      expect(call[6]).toEqual([
+        {
+          children: null,
+          name: 'componentDidUpdate test',
+          timestamp: trackedEventTime,
+        },
+      ]);
 
       onRender.mockClear();
 
@@ -1379,17 +1395,23 @@ describe('Profiler', () => {
       call = onRender.mock.calls[0];
       expect(call[0]).toEqual('test');
       expect(call[5]).toEqual(firstCommitTime);
-      expect(call[6][0]).toEqual({
-        name: 'setState callback test',
-        timestamp: trackedEventTime,
-      });
+      expect(call[6]).toEqual([
+        {
+          children: null,
+          name: 'setState callback test',
+          timestamp: trackedEventTime,
+        },
+      ]);
       call = onRender.mock.calls[1];
       expect(call[0]).toEqual('test');
       expect(call[5]).toEqual(mockNow());
-      expect(call[6][0]).toEqual({
-        name: 'setState callback test',
-        timestamp: trackedEventTime,
-      });
+      expect(call[6]).toEqual([
+        {
+          children: null,
+          name: 'setState callback test',
+          timestamp: trackedEventTime,
+        },
+      ]);
     });
   });
 });

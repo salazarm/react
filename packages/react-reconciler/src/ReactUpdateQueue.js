@@ -86,7 +86,7 @@
 
 import type {Fiber, ProfilerStateNode} from './ReactFiber';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
-import type {InteractionEvent} from 'interaction-tracking/src/InteractionTracking';
+import type {Interaction} from 'interaction-tracking/src/InteractionTracking';
 
 import {NoWork} from './ReactFiberExpirationTime';
 import {
@@ -104,7 +104,7 @@ import {
 import {REACT_PROFILER_TYPE} from 'shared/ReactSymbols';
 
 import {ProfileMode, StrictMode} from './ReactTypeOfMode';
-import {getCurrentEvent} from 'interaction-tracking';
+import {getCurrentEvents} from 'interaction-tracking';
 
 import invariant from 'shared/invariant';
 import warning from 'shared/warning';
@@ -241,24 +241,22 @@ export function enqueueUpdate<State>(
   if (enableProfilerTimer) {
     if (fiber.mode & ProfileMode) {
       // If we are currently tracking an interaction, register it with parent Profiler(s).
-      const currentInteractionEvent = getCurrentEvent();
-      if (currentInteractionEvent !== null) {
+      const interactions = getCurrentEvents();
+      if (interactions !== null) {
         let current = fiber;
         while (current.return !== null) {
           current = current.return;
           if (current.type === REACT_PROFILER_TYPE) {
-            const profilerStateNode = ((current.stateNode: any): ProfilerStateNode);
-            const {pendingInteractionEventMap} = profilerStateNode;
-            if (pendingInteractionEventMap.has(expirationTime)) {
-              const set = ((pendingInteractionEventMap.get(
-                expirationTime,
-              ): any): Set<InteractionEvent>);
-              set.add(currentInteractionEvent);
+            const {
+              pendingInteractionMap,
+            } = ((current.stateNode: any): ProfilerStateNode);
+
+            if (pendingInteractionMap.has(expirationTime)) {
+              // eslint-disable-next-line no-var
+              var set = ((pendingInteractionMap.get(expirationTime): any): Set<Interaction>);
+              interactions.forEach(interaction => set.add(interaction));
             } else {
-              pendingInteractionEventMap.set(
-                expirationTime,
-                new Set([currentInteractionEvent]),
-              );
+              pendingInteractionMap.set(expirationTime, new Set(interactions));
             }
           }
         }

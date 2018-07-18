@@ -27,31 +27,33 @@ describe('InteractionTracking', () => {
     InteractionTracking = require('interaction-tracking/src/InteractionTracking');
   });
 
-  it('should return a null eventName when outside of a tracked event', () => {
-    expect(InteractionTracking.getCurrentEvent()).toBe(null);
+  it('should return a null name when outside of a tracked event', () => {
+    expect(InteractionTracking.getCurrentEvents()).toBe(null);
   });
 
   if (__PROFILE__) {
     describe('profiling bundle', () => {
-      it('should report the tracked eventName from within the track callback', done => {
+      it('should report the tracked name from within the track callback', done => {
         advanceTimeBy(100);
 
         InteractionTracking.track('some event', () => {
-          const context = InteractionTracking.getCurrentEvent();
-          expect(context.eventName).toBe('some event');
-          expect(context.timestamp).toBe(100);
+          const interactions = InteractionTracking.getCurrentEvents();
+          expect(interactions).toEqual([
+            {children: null, name: 'some event', timestamp: 100},
+          ]);
 
           done();
         });
       });
 
-      it('should report the tracked eventName from within wrapped callbacks', done => {
+      it('should report the tracked name from within wrapped callbacks', done => {
         let wrappedIndirection;
 
         function indirection() {
-          const context = InteractionTracking.getCurrentEvent();
-          expect(context.eventName).toBe('some event');
-          expect(context.timestamp).toBe(100);
+          const interactions = InteractionTracking.getCurrentEvents();
+          expect(interactions).toEqual([
+            {children: null, name: 'some event', timestamp: 100},
+          ]);
 
           done();
         }
@@ -79,10 +81,10 @@ describe('InteractionTracking', () => {
         InteractionTracking.track('some event', () => {
           advanceTimeBy(5);
 
-          let context = InteractionTracking.getCurrentEvent();
-          expect(context.eventName).toBe('some event');
-          expect(context.timestamp).toBe(100);
-          expect(context.firstContext).toBeNull();
+          let interactions = InteractionTracking.getCurrentEvents();
+          expect(interactions).toEqual([
+            {children: null, name: 'some event', timestamp: 100},
+          ]);
 
           advanceTimeBy(10);
 
@@ -92,17 +94,17 @@ describe('InteractionTracking', () => {
 
           InteractionTracking.addContext('some more context');
 
-          context = InteractionTracking.getCurrentEvent();
-          expect(context.eventName).toBe('some event');
-          expect(context.timestamp).toBe(100);
-          expect(context.firstContext).not.toBeNull();
-          expect(context.firstContext.eventName).toBe('some context');
-          expect(context.firstContext.timestamp).toBe(115);
-          expect(context.lastContext).not.toBeNull();
-          expect(context.lastContext).toBe(context.firstContext.nextContext);
-          expect(context.lastContext).not.toBe(context.firstContext);
-          expect(context.lastContext.eventName).toBe('some more context');
-          expect(context.lastContext.timestamp).toBe(135);
+          interactions = InteractionTracking.getCurrentEvents();
+          expect(interactions).toEqual([
+            {
+              children: [
+                {children: null, name: 'some context', timestamp: 115},
+                {children: null, name: 'some more context', timestamp: 135},
+              ],
+              name: 'some event',
+              timestamp: 100,
+            },
+          ]);
 
           done();
         });
@@ -115,26 +117,30 @@ describe('InteractionTracking', () => {
         let outerIndirectionTracked = false;
 
         function innerIndirection() {
-          const context = InteractionTracking.getCurrentEvent();
-          expect(context.eventName).toBe('inner event');
-          expect(context.timestamp).toBe(150);
+          const interactions = InteractionTracking.getCurrentEvents();
+          expect(interactions).toEqual([
+            {children: null, name: 'outer event', timestamp: 100},
+            {children: null, name: 'inner event', timestamp: 150},
+          ]);
 
           innerIndirectionTracked = true;
         }
 
         function outerIndirection() {
-          const context = InteractionTracking.getCurrentEvent();
-          expect(context.eventName).toBe('outer event');
-          expect(context.timestamp).toBe(100);
+          const interactions = InteractionTracking.getCurrentEvents();
+          expect(interactions).toEqual([
+            {children: null, name: 'outer event', timestamp: 100},
+          ]);
 
           outerIndirectionTracked = true;
         }
 
         InteractionTracking.track('outer event', () => {
           // Verify the current tracked event
-          let context = InteractionTracking.getCurrentEvent();
-          expect(context.eventName).toBe('outer event');
-          expect(context.timestamp).toBe(100);
+          let interactions = InteractionTracking.getCurrentEvents();
+          expect(interactions).toEqual([
+            {children: null, name: 'outer event', timestamp: 100},
+          ]);
 
           advanceTimeBy(50);
 
@@ -147,9 +153,11 @@ describe('InteractionTracking', () => {
 
           // Verify that a nested event is properly tracked
           InteractionTracking.track('inner event', () => {
-            context = InteractionTracking.getCurrentEvent();
-            expect(context.eventName).toBe('inner event');
-            expect(context.timestamp).toBe(150);
+            interactions = InteractionTracking.getCurrentEvents();
+            expect(interactions).toEqual([
+              {children: null, name: 'outer event', timestamp: 100},
+              {children: null, name: 'inner event', timestamp: 150},
+            ]);
 
             // Verify that a wrapped outer callback is properly tracked
             wrapperOuterIndirection();
@@ -165,13 +173,50 @@ describe('InteractionTracking', () => {
           expect(innerEventTracked).toBe(true);
 
           // Verify that the original event is restored
-          context = InteractionTracking.getCurrentEvent();
-          expect(context.eventName).toBe('outer event');
-          expect(context.timestamp).toBe(100);
+          interactions = InteractionTracking.getCurrentEvents();
+          expect(interactions).toEqual([
+            {children: null, name: 'outer event', timestamp: 100},
+          ]);
 
           // Verify that a wrapped nested callback is properly tracked
           wrapperInnerIndirection();
           expect(innerIndirectionTracked).toBe(true);
+
+          done();
+        });
+      });
+
+      it('should support re-tracking expired events', done => {
+        let expiredInteractions;
+
+        advanceTimeBy(2);
+        InteractionTracking.track('outer event', () => {
+          advanceTimeBy(5);
+          InteractionTracking.track('inner event', () => {
+            expiredInteractions = InteractionTracking.getCurrentEvents();
+          });
+        });
+
+        advanceTimeBy(3);
+
+        InteractionTracking.track('new event', () => {
+          let interactions = InteractionTracking.getCurrentEvents();
+          expect(interactions).toEqual([
+            {children: null, name: 'new event', timestamp: 10},
+          ]);
+
+          InteractionTracking.retrack(expiredInteractions, () => {
+            interactions = InteractionTracking.getCurrentEvents();
+            expect(interactions).toEqual([
+              {children: null, name: 'outer event', timestamp: 2},
+              {children: null, name: 'inner event', timestamp: 7},
+            ]);
+          });
+
+          interactions = InteractionTracking.getCurrentEvents();
+          expect(interactions).toEqual([
+            {children: null, name: 'new event', timestamp: 10},
+          ]);
 
           done();
         });
@@ -182,27 +227,25 @@ describe('InteractionTracking', () => {
           advanceTimeBy(100);
 
           InteractionTracking.track('outer event', () => {
-            let context;
-
             expect(() => {
               InteractionTracking.track('inner event', () => {
                 throw Error('intentional');
               });
             }).toThrow();
 
-            context = InteractionTracking.getCurrentEvent();
-            expect(context.eventName).toBe('outer event');
-            expect(context.timestamp).toBe(100);
+            const interactions = InteractionTracking.getCurrentEvents();
+            expect(interactions).toEqual([
+              {children: null, name: 'outer event', timestamp: 100},
+            ]);
 
             done();
           });
         });
 
-        it('should reset state appropriately when an error occurs in a wrap callback', done => {
+        it('should reset state appropriately when an error occurs in a wrapped callback', done => {
           advanceTimeBy(100);
 
           InteractionTracking.track('outer event', () => {
-            let context;
             let wrappedCallback;
 
             InteractionTracking.track('inner event', () => {
@@ -213,9 +256,39 @@ describe('InteractionTracking', () => {
 
             expect(wrappedCallback).toThrow();
 
-            context = InteractionTracking.getCurrentEvent();
-            expect(context.eventName).toBe('outer event');
-            expect(context.timestamp).toBe(100);
+            const interactions = InteractionTracking.getCurrentEvents();
+            expect(interactions).toEqual([
+              {children: null, name: 'outer event', timestamp: 100},
+            ]);
+
+            done();
+          });
+        });
+
+        it('should reset state appropriately when an error occurs in a retracked callback', done => {
+          let expiredInteractions;
+
+          advanceTimeBy(2);
+          InteractionTracking.track('outer event', () => {
+            advanceTimeBy(5);
+            InteractionTracking.track('inner event', () => {
+              expiredInteractions = InteractionTracking.getCurrentEvents();
+            });
+          });
+
+          advanceTimeBy(3);
+
+          InteractionTracking.track('new event', () => {
+            expect(() => {
+              InteractionTracking.retrack(expiredInteractions, () => {
+                throw Error('expected error');
+              });
+            });
+
+            const interactions = InteractionTracking.getCurrentEvents();
+            expect(interactions).toEqual([
+              {children: null, name: 'new event', timestamp: 10},
+            ]);
 
             done();
           });
@@ -226,7 +299,7 @@ describe('InteractionTracking', () => {
     describe('production bundle', () => {
       it('should execute tracked callbacks', done => {
         InteractionTracking.track('some event', () => {
-          expect(InteractionTracking.getCurrentEvent()).toBe(null);
+          expect(InteractionTracking.getCurrentEvents()).toBe(null);
 
           done();
         });
@@ -234,7 +307,7 @@ describe('InteractionTracking', () => {
 
       it('should execute wrapped callbacks', done => {
         const wrappedCallback = InteractionTracking.wrap(() => {
-          expect(InteractionTracking.getCurrentEvent()).toBe(null);
+          expect(InteractionTracking.getCurrentEvents()).toBe(null);
 
           done();
         });
