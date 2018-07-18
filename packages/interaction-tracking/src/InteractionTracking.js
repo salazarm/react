@@ -53,6 +53,8 @@ export function track(name: string, callback: Function): void {
     timestamp: now(),
   };
 
+  // Tracked interactions should stack.
+  // To do that, create a new zone with a concatenated (cloned) array.
   let interactions: Array<Interaction> | null = getZoneCurrentContext();
   if (interactions === null) {
     interactions = [interaction];
