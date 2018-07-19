@@ -85,7 +85,15 @@ describe('ReactProfiler DevTools integration', () => {
     // The time spent in App (above the Profiler) won't be included in the durations,
     // But needs to be accounted for in the offset times.
     expect(onRender).toHaveBeenCalledTimes(1);
-    expect(onRender).toHaveBeenCalledWith('Profiler', 'mount', 10, 10, 2, 12);
+    expect(onRender).toHaveBeenCalledWith(
+      'Profiler',
+      'mount',
+      10,
+      10,
+      2,
+      12,
+      [],
+    );
     onRender.mockClear();
 
     // Measure unobservable timing required by the DevTools profiler.
@@ -102,7 +110,15 @@ describe('ReactProfiler DevTools integration', () => {
     // The time spent in App (above the Profiler) won't be included in the durations,
     // But needs to be accounted for in the offset times.
     expect(onRender).toHaveBeenCalledTimes(1);
-    expect(onRender).toHaveBeenCalledWith('Profiler', 'update', 6, 13, 14, 20);
+    expect(onRender).toHaveBeenCalledWith(
+      'Profiler',
+      'update',
+      6,
+      13,
+      14,
+      20,
+      [],
+    );
 
     // Measure unobservable timing required by the DevTools profiler.
     // At this point, the base time should include both:
