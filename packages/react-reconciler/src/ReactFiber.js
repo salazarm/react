@@ -15,6 +15,7 @@ import type {TypeOfSideEffect} from 'shared/ReactTypeOfSideEffect';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {UpdateQueue} from './ReactUpdateQueue';
 import type {Interaction} from 'interaction-tracking/src/InteractionTracking';
+import type {PendingInteractionMap} from './ReactFiberRoot';
 
 import invariant from 'shared/invariant';
 import {enableProfilerTimer} from 'shared/ReactFeatureFlags';
@@ -70,8 +71,6 @@ if (__DEV__) {
   }
 }
 
-type InteractionMap = Map<ExpirationTime, Set<Interaction>>;
-
 // The Profiler's stateNode is only used by profiling builds (i.e. when enableProfilerTimer is true).
 // During the render phase, it populates a map of expiration timese to interactions,
 // Which the Profiler uses to determine which interactions are associated with a later commit.
@@ -79,7 +78,7 @@ type InteractionMap = Map<ExpirationTime, Set<Interaction>>;
 // So that class components within the sub-tree can associate cascading updates with those events.
 export type ProfilerStateNode = {|
   committedInteractions: Array<Interaction>,
-  pendingInteractionMap: InteractionMap,
+  pendingInteractionMap: Map<ExpirationTime, Set<Interaction>>,
 |};
 
 // A Fiber is work on a Component that needs to be done or was done. There can
@@ -372,6 +371,28 @@ export function createWorkInProgress(
           interactions.forEach(interaction => set.add(interaction));
         } else {
           pendingInteractionMap.set(expirationTime, new Set(interactions));
+        }
+      }
+    }
+
+    if (isDevToolsPresent) {
+      if (current.tag === HostRoot) {
+        // If we are currently tracking an interaction, register it with the Profiler.
+        // This covers root renders (e.g. ReactDOM.render(...)) for updates.
+        const interactions = getCurrentEvents();
+        if (interactions !== null) {
+          const pendingInteractionMap = (((workInProgress.stateNode: any)
+            .pendingInteractionMap: any): PendingInteractionMap);
+
+          if (pendingInteractionMap.has(expirationTime)) {
+            // eslint-disable-next-line no-var
+            const set = ((pendingInteractionMap.get(expirationTime): any): Set<
+              Interaction,
+            >);
+            interactions.forEach(interaction => set.add(interaction));
+          } else {
+            pendingInteractionMap.set(expirationTime, new Set(interactions));
+          }
         }
       }
     }

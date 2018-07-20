@@ -8,7 +8,12 @@
  */
 
 import type {Fiber} from './ReactFiber';
-import type {FiberRoot, Batch} from './ReactFiberRoot';
+import type {
+  Batch,
+  CommittedInteractions,
+  FiberRoot,
+  PendingInteractionMap,
+} from './ReactFiberRoot';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 
 import ReactErrorUtils from 'shared/ReactErrorUtils';
@@ -94,7 +99,7 @@ import {
   stopCommitLifeCyclesTimer,
 } from './ReactDebugFiberPerf';
 import {createWorkInProgress, assignFiberPropertiesInDEV} from './ReactFiber';
-import {onCommitRoot} from './ReactFiberDevToolsHook';
+import {isDevToolsPresent, onCommitRoot} from './ReactFiberDevToolsHook';
 import {
   NoWork,
   Sync,
@@ -603,6 +608,36 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
     // Mark the current commit time to be shared by all Profilers in this batch.
     // This enables them to be grouped later.
     recordCommitTime();
+
+    if (isDevToolsPresent) {
+      const committedInteractions = (((finishedWork.stateNode: any)
+        .committedInteractions: any): CommittedInteractions);
+      const pendingInteractionMap = (((finishedWork.stateNode: any)
+        .pendingInteractionMap: any): PendingInteractionMap);
+
+      // Clear previous interactions.
+      committedInteractions.length = 0;
+
+      // Find any interaction events that were related to this commit,
+      // And remove them from the pending Map (since they've now been committed).
+      // They'll be re-added to the Map later if they cause a cascading update.
+      pendingInteractionMap.forEach((events, expirationTime) => {
+        if (expirationTime <= committedExpirationTime) {
+          events.forEach(event => {
+            // DevTools records interactions for a commit by checking the HostRoot stateNode.
+            // So store any interactions we've just committed there temporarily.
+            // They'll be removed by the subsequent commit.
+            // TODO (bvaughn) Should I use a Set here instead of an Array?
+            // Currently it might be possible for the same event to be tracked for multiple expiration times.
+            committedInteractions.push(event);
+          });
+
+          // Delete processed events so we don't log them again later.
+          // If they trigger a cascading update, they'll be re-added.
+          pendingInteractionMap.delete(expirationTime);
+        }
+      });
+    }
   }
 
   // Commit all the side-effects within a tree. We'll do this in two passes.

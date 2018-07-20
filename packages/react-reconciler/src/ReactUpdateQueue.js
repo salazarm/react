@@ -87,7 +87,9 @@
 import type {Fiber, ProfilerStateNode} from './ReactFiber';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {Interaction} from 'interaction-tracking/src/InteractionTracking';
+import type {FiberRoot, PendingInteractionMap} from './ReactFiberRoot';
 
+import {isDevToolsPresent} from './ReactFiberDevToolsHook';
 import {NoWork} from './ReactFiberExpirationTime';
 import {
   Callback,
@@ -253,10 +255,28 @@ export function enqueueUpdate<State>(
 
             if (pendingInteractionMap.has(expirationTime)) {
               // eslint-disable-next-line no-var
-              var set = ((pendingInteractionMap.get(expirationTime): any): Set<
-                Interaction,
-              >);
-              interactions.forEach(interaction => set.add(interaction));
+              var profilerSet = ((pendingInteractionMap.get(
+                expirationTime,
+              ): any): Set<Interaction>);
+              interactions.forEach(interaction => profilerSet.add(interaction));
+            } else {
+              pendingInteractionMap.set(expirationTime, new Set(interactions));
+            }
+          }
+
+          if (isDevToolsPresent) {
+            // Current now points to the HostRoot.
+            // If DevTools is present, store a copy of the interactions there also.
+            // This will enable DevTools to access them during the subsequent commit.
+            const pendingInteractionMap = ((((current.stateNode: any): FiberRoot)
+              .pendingInteractionMap: any): PendingInteractionMap);
+
+            if (pendingInteractionMap.has(expirationTime)) {
+              // eslint-disable-next-line no-var
+              var hostRootSet = ((pendingInteractionMap.get(
+                expirationTime,
+              ): any): Set<Interaction>);
+              interactions.forEach(interaction => hostRootSet.add(interaction));
             } else {
               pendingInteractionMap.set(expirationTime, new Set(interactions));
             }
