@@ -89,7 +89,7 @@ describe('Profiler', () => {
 
         // This will throw in production too,
         // But the test is only interested in verifying the DEV error message.
-        if (__DEV__) {
+        if (__PROFILE__) {
           it('should warn if required params are missing', () => {
             expect(() => {
               ReactTestRenderer.create(<React.unstable_Profiler />);
@@ -895,13 +895,13 @@ describe('Profiler', () => {
             expect(mountCall[1]).toBe('mount');
             // actual time includes: 2 (ErrorBoundary) + 5 (AdvanceTime) + 10 (ThrowsError)
             // If replayFailedUnitOfWorkWithInvokeGuardedCallback is enbaled, ThrowsError is replayed.
-            expect(mountCall[2]).toBe(flagEnabled && __DEV__ ? 27 : 17);
+            expect(mountCall[2]).toBe(flagEnabled && __PROFILE__ ? 27 : 17);
             // base time includes: 2 (ErrorBoundary)
             expect(mountCall[3]).toBe(2);
             // start time
             expect(mountCall[4]).toBe(5);
             // commit time
-            expect(mountCall[5]).toBe(flagEnabled && __DEV__ ? 32 : 22);
+            expect(mountCall[5]).toBe(flagEnabled && __PROFILE__ ? 32 : 22);
 
             // The update includes the ErrorBoundary and its fallback child
             expect(updateCall[1]).toBe('update');
@@ -910,9 +910,9 @@ describe('Profiler', () => {
             // base time includes: 2 (ErrorBoundary) + 20 (AdvanceTime)
             expect(updateCall[3]).toBe(22);
             // start time
-            expect(updateCall[4]).toBe(flagEnabled && __DEV__ ? 32 : 22);
+            expect(updateCall[4]).toBe(flagEnabled && __PROFILE__ ? 32 : 22);
             // commit time
-            expect(updateCall[5]).toBe(flagEnabled && __DEV__ ? 54 : 44);
+            expect(updateCall[5]).toBe(flagEnabled && __PROFILE__ ? 54 : 44);
           });
 
           it('should accumulate actual time after an error handled by getDerivedStateFromCatch()', () => {
@@ -960,13 +960,13 @@ describe('Profiler', () => {
             // actual time includes: 2 (ErrorBoundary) + 5 (AdvanceTime) + 10 (ThrowsError)
             // Then the re-render: 2 (ErrorBoundary) + 20 (AdvanceTime)
             // If replayFailedUnitOfWorkWithInvokeGuardedCallback is enbaled, ThrowsError is replayed.
-            expect(mountCall[2]).toBe(flagEnabled && __DEV__ ? 49 : 39);
+            expect(mountCall[2]).toBe(flagEnabled && __PROFILE__ ? 49 : 39);
             // base time includes: 2 (ErrorBoundary) + 20 (AdvanceTime)
             expect(mountCall[3]).toBe(22);
             // start time
             expect(mountCall[4]).toBe(5);
             // commit time
-            expect(mountCall[5]).toBe(flagEnabled && __DEV__ ? 54 : 44);
+            expect(mountCall[5]).toBe(flagEnabled && __PROFILE__ ? 54 : 44);
           });
 
           it('should reset the fiber stack correct after a "complete" phase error', () => {
@@ -1154,9 +1154,17 @@ describe('Profiler', () => {
       let call = onRender.mock.calls[0];
       expect(call[0]).toEqual('test-profiler');
       expect(call[5]).toEqual(mockNow());
-      expect(call[6]).toEqual([
-        {children: null, name: 'creation event', timestamp: creationEventTime},
-      ]);
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'creation event',
+                timestamp: creationEventTime,
+              },
+            ]
+          : [],
+      );
 
       onRender.mockClear();
 
@@ -1189,24 +1197,28 @@ describe('Profiler', () => {
         call = onRender.mock.calls[0];
         expect(call[0]).toEqual('test-profiler');
         expect(call[5]).toEqual(mockNow());
-        expect(call[6]).toEqual([
-          {
-            children: [
-              {
-                children: null,
-                name: 'first update',
-                timestamp: firstUpdateTime,
-              },
-              {
-                children: null,
-                name: 'second update',
-                timestamp: secondUpdateTime,
-              },
-            ],
-            name: 'initial event',
-            timestamp: initialEventTime,
-          },
-        ]);
+        expect(call[6]).toEqual(
+          __PROFILE__
+            ? [
+                {
+                  children: [
+                    {
+                      children: null,
+                      name: 'first update',
+                      timestamp: firstUpdateTime,
+                    },
+                    {
+                      children: null,
+                      name: 'second update',
+                      timestamp: secondUpdateTime,
+                    },
+                  ],
+                  name: 'initial event',
+                  timestamp: initialEventTime,
+                },
+              ]
+            : [],
+        );
 
         didRunCallback = true;
       });
@@ -1246,13 +1258,17 @@ describe('Profiler', () => {
       call = onRender.mock.calls[0];
       expect(call[0]).toEqual('test-profiler');
       expect(call[5]).toEqual(mockNow());
-      expect(call[6]).toEqual([
-        {
-          children: null,
-          name: 'root update event',
-          timestamp: rootUpdateEventTime,
-        },
-      ]);
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'root update event',
+                timestamp: rootUpdateEventTime,
+              },
+            ]
+          : [],
+      );
     });
 
     it('should report the expected times when a high-priority update interrupts a low-priority update', () => {
@@ -1323,10 +1339,14 @@ describe('Profiler', () => {
         let call = onRender.mock.calls[0];
         expect(call[0]).toEqual('test');
         expect(call[5]).toEqual(mockNow());
-        expect(call[6]).toEqual([
-          {children: null, name: 'lowPri', timestamp: lowPriTime},
-          {children: null, name: 'highPri', timestamp: highPriTime},
-        ]);
+        expect(call[6]).toEqual(
+          __PROFILE__
+            ? [
+                {children: null, name: 'lowPri', timestamp: lowPriTime},
+                {children: null, name: 'highPri', timestamp: highPriTime},
+              ]
+            : [],
+        );
 
         onRender.mockClear();
 
@@ -1339,9 +1359,11 @@ describe('Profiler', () => {
         call = onRender.mock.calls[0];
         expect(call[0]).toEqual('test');
         expect(call[5]).toEqual(mockNow());
-        expect(call[6]).toEqual([
-          {children: null, name: 'lowPri', timestamp: lowPriTime},
-        ]);
+        expect(call[6]).toEqual(
+          __PROFILE__
+            ? [{children: null, name: 'lowPri', timestamp: lowPriTime}]
+            : [],
+        );
       });
     });
 
@@ -1387,23 +1409,31 @@ describe('Profiler', () => {
       let call = onRender.mock.calls[0];
       expect(call[0]).toEqual('test');
       expect(call[5]).toEqual(firstCommitTime);
-      expect(call[6]).toEqual([
-        {
-          children: null,
-          name: 'componentDidMount test',
-          timestamp: trackedEventTime,
-        },
-      ]);
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'componentDidMount test',
+                timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
       call = onRender.mock.calls[1];
       expect(call[0]).toEqual('test');
       expect(call[5]).toEqual(mockNow());
-      expect(call[6]).toEqual([
-        {
-          children: null,
-          name: 'componentDidMount test',
-          timestamp: trackedEventTime,
-        },
-      ]);
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'componentDidMount test',
+                timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
 
       onRender.mockClear();
 
@@ -1426,23 +1456,31 @@ describe('Profiler', () => {
       call = onRender.mock.calls[0];
       expect(call[0]).toEqual('test');
       expect(call[5]).toEqual(firstCommitTime);
-      expect(call[6]).toEqual([
-        {
-          children: null,
-          name: 'componentDidUpdate test',
-          timestamp: trackedEventTime,
-        },
-      ]);
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'componentDidUpdate test',
+                timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
       call = onRender.mock.calls[1];
       expect(call[0]).toEqual('test');
       expect(call[5]).toEqual(mockNow());
-      expect(call[6]).toEqual([
-        {
-          children: null,
-          name: 'componentDidUpdate test',
-          timestamp: trackedEventTime,
-        },
-      ]);
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'componentDidUpdate test',
+                timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
 
       onRender.mockClear();
 
@@ -1466,23 +1504,31 @@ describe('Profiler', () => {
       call = onRender.mock.calls[0];
       expect(call[0]).toEqual('test');
       expect(call[5]).toEqual(firstCommitTime);
-      expect(call[6]).toEqual([
-        {
-          children: null,
-          name: 'setState callback test',
-          timestamp: trackedEventTime,
-        },
-      ]);
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'setState callback test',
+                timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
       call = onRender.mock.calls[1];
       expect(call[0]).toEqual('test');
       expect(call[5]).toEqual(mockNow());
-      expect(call[6]).toEqual([
-        {
-          children: null,
-          name: 'setState callback test',
-          timestamp: trackedEventTime,
-        },
-      ]);
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'setState callback test',
+                timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
     });
   });
 });

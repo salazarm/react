@@ -184,8 +184,10 @@ describe('ReactProfiler DevTools integration', () => {
     });
 
     //const root = rendered.root._currentFiber().return;
-    expect(root.stateNode.committedInteractions).toEqual([
-      {children: null, name: 'some event', timestamp: eventTime},
-    ]);
+    expect(root.stateNode.committedInteractions).toEqual(
+      __PROFILE__
+        ? [{children: null, name: 'some event', timestamp: eventTime}]
+        : [],
+    );
   });
 });
