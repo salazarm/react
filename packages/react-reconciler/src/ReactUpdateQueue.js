@@ -84,12 +84,9 @@
 // regardless of priority. Intermediate state may vary according to system
 // resources, but the final state is always the same.
 
-import type {Fiber, ProfilerStateNode} from './ReactFiber';
+import type {Fiber} from './ReactFiber';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
-import type {Interaction} from 'interaction-tracking/src/InteractionTracking';
-import type {FiberRoot, PendingInteractionMap} from './ReactFiberRoot';
 
-import {isDevToolsPresent} from './ReactFiberDevToolsHook';
 import {NoWork} from './ReactFiberExpirationTime';
 import {
   Callback,
@@ -101,12 +98,9 @@ import {ClassComponent} from 'shared/ReactTypeOfWork';
 import {
   debugRenderPhaseSideEffects,
   debugRenderPhaseSideEffectsForStrictMode,
-  enableProfilerTimer,
 } from 'shared/ReactFeatureFlags';
-import {REACT_PROFILER_TYPE} from 'shared/ReactSymbols';
 
-import {ProfileMode, StrictMode} from './ReactTypeOfMode';
-import {getCurrentEvents} from 'interaction-tracking';
+import {StrictMode} from './ReactTypeOfMode';
 
 import invariant from 'shared/invariant';
 import warningWithoutStack from 'shared/warningWithoutStack';
@@ -123,7 +117,6 @@ export type Update<State> = {
 };
 
 export type UpdateQueue<State> = {
-  expirationTime: ExpirationTime,
   baseState: State,
 
   firstUpdate: Update<State> | null,
@@ -162,7 +155,6 @@ if (__DEV__) {
 
 export function createUpdateQueue<State>(baseState: State): UpdateQueue<State> {
   const queue: UpdateQueue<State> = {
-    expirationTime: NoWork,
     baseState,
     firstUpdate: null,
     lastUpdate: null,
@@ -180,7 +172,6 @@ function cloneUpdateQueue<State>(
   currentQueue: UpdateQueue<State>,
 ): UpdateQueue<State> {
   const queue: UpdateQueue<State> = {
-    expirationTime: currentQueue.expirationTime,
     baseState: currentQueue.baseState,
     firstUpdate: currentQueue.firstUpdate,
     lastUpdate: currentQueue.lastUpdate,
@@ -215,7 +206,6 @@ export function createUpdate(expirationTime: ExpirationTime): Update<*> {
 function appendUpdateToQueue<State>(
   queue: UpdateQueue<State>,
   update: Update<State>,
-  expirationTime: ExpirationTime,
 ) {
   // Append the update to the end of the list.
   if (queue.lastUpdate === null) {
@@ -225,67 +215,9 @@ function appendUpdateToQueue<State>(
     queue.lastUpdate.next = update;
     queue.lastUpdate = update;
   }
-  if (
-    queue.expirationTime === NoWork ||
-    queue.expirationTime > expirationTime
-  ) {
-    // The incoming update has the earliest expiration of any update in the
-    // queue. Update the queue's expiration time.
-    queue.expirationTime = expirationTime;
-  }
 }
 
-export function enqueueUpdate<State>(
-  fiber: Fiber,
-  update: Update<State>,
-  expirationTime: ExpirationTime,
-) {
-  if (enableProfilerTimer) {
-    if (fiber.mode & ProfileMode) {
-      // If we are currently tracking an interaction, register it with parent Profiler(s).
-      const interactions = getCurrentEvents();
-      if (interactions !== null) {
-        let current = fiber;
-        while (current.return !== null) {
-          current = current.return;
-          if (current.type === REACT_PROFILER_TYPE) {
-            const {
-              pendingInteractionMap,
-            } = ((current.stateNode: any): ProfilerStateNode);
-
-            if (pendingInteractionMap.has(expirationTime)) {
-              // eslint-disable-next-line no-var
-              var profilerSet = ((pendingInteractionMap.get(
-                expirationTime,
-              ): any): Set<Interaction>);
-              interactions.forEach(interaction => profilerSet.add(interaction));
-            } else {
-              pendingInteractionMap.set(expirationTime, new Set(interactions));
-            }
-          }
-
-          if (isDevToolsPresent) {
-            // Current now points to the HostRoot.
-            // If DevTools is present, store a copy of the interactions there also.
-            // This will enable DevTools to access them during the subsequent commit.
-            const pendingInteractionMap = ((((current.stateNode: any): FiberRoot)
-              .pendingInteractionMap: any): PendingInteractionMap);
-
-            if (pendingInteractionMap.has(expirationTime)) {
-              // eslint-disable-next-line no-var
-              var hostRootSet = ((pendingInteractionMap.get(
-                expirationTime,
-              ): any): Set<Interaction>);
-              interactions.forEach(interaction => hostRootSet.add(interaction));
-            } else {
-              pendingInteractionMap.set(expirationTime, new Set(interactions));
-            }
-          }
-        }
-      }
-    }
-  }
-
+export function enqueueUpdate<State>(fiber: Fiber, update: Update<State>) {
   // Update queues are created lazily.
   const alternate = fiber.alternate;
   let queue1;
@@ -323,19 +255,19 @@ export function enqueueUpdate<State>(
   }
   if (queue2 === null || queue1 === queue2) {
     // There's only a single queue.
-    appendUpdateToQueue(queue1, update, expirationTime);
+    appendUpdateToQueue(queue1, update);
   } else {
     // There are two queues. We need to append the update to both queues,
     // while accounting for the persistent structure of the list — we don't
     // want the same update to be added multiple times.
     if (queue1.lastUpdate === null || queue2.lastUpdate === null) {
       // One of the queues is not empty. We must add the update to both queues.
-      appendUpdateToQueue(queue1, update, expirationTime);
-      appendUpdateToQueue(queue2, update, expirationTime);
+      appendUpdateToQueue(queue1, update);
+      appendUpdateToQueue(queue2, update);
     } else {
       // Both queues are non-empty. The last update is the same in both lists,
       // because of structural sharing. So, only append to one of the lists.
-      appendUpdateToQueue(queue1, update, expirationTime);
+      appendUpdateToQueue(queue1, update);
       // But we still need to update the `lastUpdate` pointer of queue2.
       queue2.lastUpdate = update;
     }
@@ -363,7 +295,6 @@ export function enqueueUpdate<State>(
 export function enqueueCapturedUpdate<State>(
   workInProgress: Fiber,
   update: Update<State>,
-  renderExpirationTime: ExpirationTime,
 ) {
   // Captured updates go into a separate list, and only on the work-in-
   // progress queue.
@@ -389,14 +320,6 @@ export function enqueueCapturedUpdate<State>(
   } else {
     workInProgressQueue.lastCapturedUpdate.next = update;
     workInProgressQueue.lastCapturedUpdate = update;
-  }
-  if (
-    workInProgressQueue.expirationTime === NoWork ||
-    workInProgressQueue.expirationTime > renderExpirationTime
-  ) {
-    // The incoming update has the earliest expiration of any update in the
-    // queue. Update the queue's expiration time.
-    workInProgressQueue.expirationTime = renderExpirationTime;
   }
 }
 
@@ -489,14 +412,6 @@ export function processUpdateQueue<State>(
   renderExpirationTime: ExpirationTime,
 ): void {
   hasForceUpdate = false;
-
-  if (
-    queue.expirationTime === NoWork ||
-    queue.expirationTime > renderExpirationTime
-  ) {
-    // Insufficient priority. Bailout.
-    return;
-  }
 
   queue = ensureWorkInProgressQueueIsAClone(workInProgress, queue);
 
@@ -629,8 +544,15 @@ export function processUpdateQueue<State>(
   queue.baseState = newBaseState;
   queue.firstUpdate = newFirstUpdate;
   queue.firstCapturedUpdate = newFirstCapturedUpdate;
-  queue.expirationTime = newExpirationTime;
 
+  // Set the remaining expiration time to be whatever is remaining in the queue.
+  // This should be fine because the only two other things that contribute to
+  // expiration time are props and context. We're already in the middle of the
+  // begin phase by the time we start processing the queue, so we've already
+  // dealt with the props. Context in components that specify
+  // shouldComponentUpdate is tricky; but we'll have to account for
+  // that regardless.
+  workInProgress.expirationTime = newExpirationTime;
   workInProgress.memoizedState = resultState;
 
   if (__DEV__) {

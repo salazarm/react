@@ -172,7 +172,7 @@ describe('ReactProfiler DevTools integration', () => {
     const rendered = ReactTestRenderer.create(<div />);
 
     const root = rendered.root._currentFiber().return;
-    expect(root.stateNode.committedInteractions).toEqual([]);
+    expect(root.stateNode.committedInteractions.size).toEqual(0);
 
     advanceTimeBy(10);
 
@@ -184,7 +184,7 @@ describe('ReactProfiler DevTools integration', () => {
     });
 
     //const root = rendered.root._currentFiber().return;
-    expect(root.stateNode.committedInteractions).toEqual(
+    expect(Array.from(root.stateNode.committedInteractions)).toEqual(
       __PROFILE__
         ? [{children: null, name: 'some event', timestamp: eventTime}]
         : [],

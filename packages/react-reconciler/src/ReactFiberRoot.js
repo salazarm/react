@@ -31,7 +31,7 @@ export type Batch = {
   _next: Batch | null,
 };
 
-export type CommittedInteractions = Array<Interaction>;
+export type CommittedInteractions = Set<Interaction>;
 export type PendingInteractionMap = Map<ExpirationTime, Set<Interaction>>;
 
 export type FiberRoot = {
@@ -139,7 +139,7 @@ export function createFiberRoot(
 
       // Map of expiration time to interaction events.
       // Populated when state updates are enqueued during a tracked interaction.
-      ((root: any): FiberRoot).committedInteractions = [];
+      ((root: any): FiberRoot).committedInteractions = new Set();
       ((root: any): FiberRoot).pendingInteractionMap = pendingInteractionMap;
 
       // If we are currently tracking an interaction, register it with the HostRoot.

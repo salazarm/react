@@ -255,7 +255,7 @@ function commitLifeCycles(
           if (enableProfilerTimer) {
             // Profiling builds should wrap callback with interaction-tracking to associate cascading work
             if (profilerStateNode !== null) {
-              retrack(profilerStateNode.committedInteractions, () =>
+              retrack(Array.from(profilerStateNode.committedInteractions), () =>
                 instance.componentDidMount(),
               );
             } else {
@@ -274,13 +274,16 @@ function commitLifeCycles(
           if (enableProfilerTimer) {
             // Profiling builds should wrap callback with interaction-tracking to associate cascading work
             if (profilerStateNode !== null) {
-              retrack(profilerStateNode.committedInteractions, () => {
-                instance.componentDidUpdate(
-                  prevProps,
-                  prevState,
-                  instance.__reactInternalSnapshotBeforeUpdate,
-                );
-              });
+              retrack(
+                Array.from(profilerStateNode.committedInteractions),
+                () => {
+                  instance.componentDidUpdate(
+                    prevProps,
+                    prevState,
+                    instance.__reactInternalSnapshotBeforeUpdate,
+                  );
+                },
+              );
             } else {
               instance.componentDidUpdate(
                 prevProps,
@@ -361,7 +364,7 @@ function commitLifeCycles(
       if (enableProfilerTimer) {
         // Clear the shared list of committed events.
         // Any that resulted in cascading updates will have already been re-added to the pending map.
-        ((finishedWork.stateNode: any): ProfilerStateNode).committedInteractions.length = 0;
+        ((finishedWork.stateNode: any): ProfilerStateNode).committedInteractions.clear();
       }
       return;
     }
@@ -893,7 +896,7 @@ function commitWork(
               // Profiler temporarily shares these events with its descendants via an Array.
               // During commitLifeCycles(), class components read from this Array,
               // And the Profiler empties it once they are done.
-              committedInteractions.push(event);
+              committedInteractions.add(event);
             });
 
             // Delete processed events so we don't log them again later.
@@ -909,7 +912,7 @@ function commitWork(
           finishedWork.treeBaseDuration,
           finishedWork.actualStartTime,
           getCommitTime(),
-          committedInteractions.concat(),
+          Array.from(committedInteractions),
         );
       }
       return;
