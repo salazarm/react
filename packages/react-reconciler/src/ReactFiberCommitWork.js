@@ -14,7 +14,7 @@ import type {
   ChildSet,
   UpdatePayload,
 } from './ReactFiberHostConfig';
-import type {Fiber} from './ReactFiber';
+import type {Fiber, ProfilerStateNode} from './ReactFiber';
 import type {FiberRoot} from './ReactFiberRoot';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {CapturedValue, CapturedError} from './ReactCapturedValue';
@@ -39,6 +39,7 @@ import {
 } from 'shared/ReactTypeOfSideEffect';
 import getComponentName from 'shared/getComponentName';
 import invariant from 'shared/invariant';
+import {retrack} from 'interaction-tracking';
 import warningWithoutStack from 'shared/warningWithoutStack';
 
 import {Sync} from './ReactFiberExpirationTime';
@@ -239,11 +240,30 @@ function commitLifeCycles(
     case ClassComponent: {
       const instance = finishedWork.stateNode;
       if (finishedWork.effectTag & Update) {
+        // Find any interaction events that were related to this commit.
+        let profilerStateNode: ProfilerStateNode | null = null;
+        if (enableProfilerTimer) {
+          if (instance.__reactInternalProfilerStateNode != null) {
+            profilerStateNode = ((instance.__reactInternalProfilerStateNode: any): ProfilerStateNode);
+          }
+        }
+
         if (current === null) {
           startPhaseTimer(finishedWork, 'componentDidMount');
           instance.props = finishedWork.memoizedProps;
           instance.state = finishedWork.memoizedState;
-          instance.componentDidMount();
+          if (enableProfilerTimer) {
+            // Profiling builds should wrap callback with interaction-tracking to associate cascading work
+            if (profilerStateNode !== null) {
+              retrack(Array.from(profilerStateNode.committedInteractions), () =>
+                instance.componentDidMount(),
+              );
+            } else {
+              instance.componentDidMount();
+            }
+          } else {
+            instance.componentDidMount();
+          }
           stopPhaseTimer();
         } else {
           const prevProps = current.memoizedProps;
@@ -251,11 +271,33 @@ function commitLifeCycles(
           startPhaseTimer(finishedWork, 'componentDidUpdate');
           instance.props = finishedWork.memoizedProps;
           instance.state = finishedWork.memoizedState;
-          instance.componentDidUpdate(
-            prevProps,
-            prevState,
-            instance.__reactInternalSnapshotBeforeUpdate,
-          );
+          if (enableProfilerTimer) {
+            // Profiling builds should wrap callback with interaction-tracking to associate cascading work
+            if (profilerStateNode !== null) {
+              retrack(
+                Array.from(profilerStateNode.committedInteractions),
+                () => {
+                  instance.componentDidUpdate(
+                    prevProps,
+                    prevState,
+                    instance.__reactInternalSnapshotBeforeUpdate,
+                  );
+                },
+              );
+            } else {
+              instance.componentDidUpdate(
+                prevProps,
+                prevState,
+                instance.__reactInternalSnapshotBeforeUpdate,
+              );
+            }
+          } else {
+            instance.componentDidUpdate(
+              prevProps,
+              prevState,
+              instance.__reactInternalSnapshotBeforeUpdate,
+            );
+          }
           stopPhaseTimer();
         }
       }
@@ -319,7 +361,11 @@ function commitLifeCycles(
       return;
     }
     case Profiler: {
-      // We have no life-cycles associated with Profiler.
+      if (enableProfilerTimer) {
+        // Clear the shared list of committed events.
+        // Any that resulted in cascading updates will have already been re-added to the pending map.
+        ((finishedWork.stateNode: any): ProfilerStateNode).committedInteractions.clear();
+      }
       return;
     }
     case PlaceholderComponent: {
@@ -772,7 +818,11 @@ function commitDeletion(current: Fiber): void {
   detachFiber(current);
 }
 
-function commitWork(current: Fiber | null, finishedWork: Fiber): void {
+function commitWork(
+  current: Fiber | null,
+  finishedWork: Fiber,
+  committedExpirationTime: ExpirationTime,
+): void {
   if (!supportsMutation) {
     commitContainer(finishedWork);
     return;
@@ -830,6 +880,31 @@ function commitWork(current: Fiber | null, finishedWork: Fiber): void {
     case Profiler: {
       if (enableProfilerTimer) {
         const onRender = finishedWork.memoizedProps.onRender;
+        const {
+          committedInteractions,
+          pendingInteractionMap,
+        } = ((finishedWork.stateNode: any): ProfilerStateNode);
+
+        // Find any interaction events that were related to this commit,
+        // And remove them from the pending Map (since they've now been committed).
+        // They'll be re-added to the Map later if they cause a cascading update.
+        pendingInteractionMap.forEach((events, expirationTime) => {
+          if (expirationTime <= committedExpirationTime) {
+            events.forEach(event => {
+              // Class components within this Profiler's sub-tree may have commit phase lifecycles.
+              // If thye cause cascading updates, React needs a way to associate them with the original events.
+              // Profiler temporarily shares these events with its descendants via an Array.
+              // During commitLifeCycles(), class components read from this Array,
+              // And the Profiler empties it once they are done.
+              committedInteractions.add(event);
+            });
+
+            // Delete processed events so we don't log them again later.
+            // If they trigger a cascading update, they'll be re-added.
+            pendingInteractionMap.delete(expirationTime);
+          }
+        });
+
         onRender(
           finishedWork.memoizedProps.id,
           current === null ? 'mount' : 'update',
@@ -837,6 +912,7 @@ function commitWork(current: Fiber | null, finishedWork: Fiber): void {
           finishedWork.treeBaseDuration,
           finishedWork.actualStartTime,
           getCommitTime(),
+          Array.from(committedInteractions),
         );
       }
       return;

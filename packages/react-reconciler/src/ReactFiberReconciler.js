@@ -136,7 +136,6 @@ function scheduleRootUpdate(
     update.callback = callback;
   }
   enqueueUpdate(current, update);
-
   scheduleWork(current, expirationTime);
   return expirationTime;
 }

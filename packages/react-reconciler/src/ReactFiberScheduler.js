@@ -7,10 +7,17 @@
  * @flow
  */
 
-import type {Fiber} from './ReactFiber';
-import type {FiberRoot, Batch} from './ReactFiberRoot';
+import type {Fiber, ProfilerStateNode} from './ReactFiber';
+import type {Interaction} from 'interaction-tracking/src/InteractionTracking';
+import type {
+  Batch,
+  CommittedInteractions,
+  FiberRoot,
+  PendingInteractionMap,
+} from './ReactFiberRoot';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 
+import {getCurrentEvents} from 'interaction-tracking';
 import ReactErrorUtils from 'shared/ReactErrorUtils';
 import ReactSharedInternals from 'shared/ReactSharedInternals';
 import ReactStrictModeWarnings from './ReactStrictModeWarnings';
@@ -35,6 +42,7 @@ import {
   HostComponent,
   ContextProvider,
   HostPortal,
+  Profiler,
 } from 'shared/ReactTypeOfWork';
 import {
   enableProfilerTimer,
@@ -48,6 +56,8 @@ import getComponentName from 'shared/getComponentName';
 import invariant from 'shared/invariant';
 import warningWithoutStack from 'shared/warningWithoutStack';
 
+import {popProfilerStateNode} from './ReactProfilerStack';
+import {REACT_PROFILER_TYPE} from 'shared/ReactSymbols';
 import {
   scheduleTimeout,
   cancelTimeout,
@@ -92,7 +102,7 @@ import {
   stopCommitLifeCyclesTimer,
 } from './ReactDebugFiberPerf';
 import {createWorkInProgress, assignFiberPropertiesInDEV} from './ReactFiber';
-import {onCommitRoot} from './ReactFiberDevToolsHook';
+import {isDevToolsPresent, onCommitRoot} from './ReactFiberDevToolsHook';
 import {
   NoWork,
   Sync,
@@ -305,6 +315,11 @@ if (__DEV__ && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
       case ContextProvider:
         popProvider(failedUnitOfWork);
         break;
+      case Profiler:
+        if (enableProfilerTimer) {
+          popProfilerStateNode(failedUnitOfWork);
+        }
+        break;
     }
     // Replay the begin phase.
     isReplayingFailedUnitOfWork = true;
@@ -361,7 +376,7 @@ function resetStack() {
   nextUnitOfWork = null;
 }
 
-function commitAllHostEffects() {
+function commitAllHostEffects(committedExpirationTime: ExpirationTime) {
   while (nextEffect !== null) {
     if (__DEV__) {
       ReactCurrentFiber.setCurrentFiber(nextEffect);
@@ -406,12 +421,12 @@ function commitAllHostEffects() {
 
         // Update
         const current = nextEffect.alternate;
-        commitWork(current, nextEffect);
+        commitWork(current, nextEffect, committedExpirationTime);
         break;
       }
       case Update: {
         const current = nextEffect.alternate;
-        commitWork(current, nextEffect);
+        commitWork(current, nextEffect, committedExpirationTime);
         break;
       }
       case Deletion: {
@@ -604,6 +619,36 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
     // Mark the current commit time to be shared by all Profilers in this batch.
     // This enables them to be grouped later.
     recordCommitTime();
+
+    if (isDevToolsPresent) {
+      const committedInteractions = (((finishedWork.stateNode: any)
+        .committedInteractions: any): CommittedInteractions);
+      const pendingInteractionMap = (((finishedWork.stateNode: any)
+        .pendingInteractionMap: any): PendingInteractionMap);
+
+      // Clear previous interactions.
+      committedInteractions.clear();
+
+      // Find any interaction events that were related to this commit,
+      // And remove them from the pending Map (since they've now been committed).
+      // They'll be re-added to the Map later if they cause a cascading update.
+      pendingInteractionMap.forEach((events, expirationTime) => {
+        if (expirationTime <= committedExpirationTime) {
+          events.forEach(event => {
+            // DevTools records interactions for a commit by checking the HostRoot stateNode.
+            // So store any interactions we've just committed there temporarily.
+            // They'll be removed by the subsequent commit.
+            // TODO (bvaughn) Should I use a Set here instead of an Array?
+            // Currently it might be possible for the same event to be tracked for multiple expiration times.
+            committedInteractions.add(event);
+          });
+
+          // Delete processed events so we don't log them again later.
+          // If they trigger a cascading update, they'll be re-added.
+          pendingInteractionMap.delete(expirationTime);
+        }
+      });
+    }
   }
 
   // Commit all the side-effects within a tree. We'll do this in two passes.
@@ -615,14 +660,19 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
     let didError = false;
     let error;
     if (__DEV__) {
-      invokeGuardedCallback(null, commitAllHostEffects, null);
+      invokeGuardedCallback(
+        null,
+        commitAllHostEffects,
+        null,
+        committedExpirationTime,
+      );
       if (hasCaughtError()) {
         didError = true;
         error = clearCaughtError();
       }
     } else {
       try {
-        commitAllHostEffects();
+        commitAllHostEffects(committedExpirationTime);
       } catch (e) {
         didError = true;
         error = e;
@@ -1484,6 +1534,52 @@ function scheduleWorkToRoot(fiber: Fiber, expirationTime): FiberRoot | null {
 
 function scheduleWork(fiber: Fiber, expirationTime: ExpirationTime) {
   recordScheduleUpdate();
+
+  if (enableProfilerTimer) {
+    if (fiber.mode & ProfileMode) {
+      // If we are currently tracking an interaction, register it with parent Profiler(s).
+      const interactions = getCurrentEvents();
+      if (interactions !== null) {
+        let current = fiber;
+        while (current.return !== null) {
+          current = current.return;
+          if (current.type === REACT_PROFILER_TYPE) {
+            const {
+              pendingInteractionMap,
+            } = ((current.stateNode: any): ProfilerStateNode);
+
+            if (pendingInteractionMap.has(expirationTime)) {
+              // eslint-disable-next-line no-var
+              var profilerSet = ((pendingInteractionMap.get(
+                expirationTime,
+              ): any): Set<Interaction>);
+              interactions.forEach(interaction => profilerSet.add(interaction));
+            } else {
+              pendingInteractionMap.set(expirationTime, new Set(interactions));
+            }
+          }
+
+          if (isDevToolsPresent) {
+            // Current now points to the HostRoot.
+            // If DevTools is present, store a copy of the interactions there also.
+            // This will enable DevTools to access them during the subsequent commit.
+            const pendingInteractionMap = ((((current.stateNode: any): FiberRoot)
+              .pendingInteractionMap: any): PendingInteractionMap);
+
+            if (pendingInteractionMap.has(expirationTime)) {
+              // eslint-disable-next-line no-var
+              var hostRootSet = ((pendingInteractionMap.get(
+                expirationTime,
+              ): any): Set<Interaction>);
+              interactions.forEach(interaction => hostRootSet.add(interaction));
+            } else {
+              pendingInteractionMap.set(expirationTime, new Set(interactions));
+            }
+          }
+        }
+      }
+    }
+  }
 
   if (__DEV__) {
     if (fiber.tag === ClassComponent) {

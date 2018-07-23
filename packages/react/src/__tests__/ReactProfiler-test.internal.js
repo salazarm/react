@@ -5,20 +5,32 @@
  * LICENSE file in the root directory of this source tree.
  *
  * @emails react-core
+ * @jest-environment node
  */
 
 'use strict';
 
+let InteractionTracking;
 let React;
 let ReactFeatureFlags;
 let ReactNoop;
 let ReactTestRenderer;
+let advanceTimeBy;
+let mockNow;
+let AdvanceTime;
 
 function loadModules({
   enableProfilerTimer = true,
   replayFailedUnitOfWorkWithInvokeGuardedCallback = false,
   useNoopRenderer = false,
 } = {}) {
+  let currentTime = 0;
+
+  mockNow = jest.fn().mockImplementation(() => currentTime);
+
+  global.Date.now = mockNow;
+
+  InteractionTracking = require('interaction-tracking');
   ReactFeatureFlags = require('shared/ReactFeatureFlags');
   ReactFeatureFlags.debugRenderPhaseSideEffects = false;
   ReactFeatureFlags.debugRenderPhaseSideEffectsForStrictMode = false;
@@ -31,7 +43,27 @@ function loadModules({
     ReactNoop = require('react-noop-renderer');
   } else {
     ReactTestRenderer = require('react-test-renderer');
+    ReactTestRenderer.unstable_setNowImplementation(mockNow);
   }
+
+  advanceTimeBy = amount => {
+    currentTime += amount;
+  };
+
+  AdvanceTime = class extends React.Component {
+    static defaultProps = {
+      byAmount: 10,
+      shouldComponentUpdate: true,
+    };
+    shouldComponentUpdate(nextProps) {
+      return nextProps.shouldComponentUpdate;
+    }
+    render() {
+      // Simulate time passing when this component is rendered
+      advanceTimeBy(this.props.byAmount);
+      return this.props.children || null;
+    }
+  };
 }
 
 const mockDevToolsForTest = () => {
@@ -57,7 +89,7 @@ describe('Profiler', () => {
 
         // This will throw in production too,
         // But the test is only interested in verifying the DEV error message.
-        if (__DEV__) {
+        if (__PROFILE__) {
           it('should warn if required params are missing', () => {
             expect(() => {
               ReactTestRenderer.create(<React.unstable_Profiler />);
@@ -122,41 +154,10 @@ describe('Profiler', () => {
   });
 
   describe('onRender callback', () => {
-    let AdvanceTime;
-    let advanceTimeBy;
-    let mockNow;
-
-    const mockNowForTests = () => {
-      let currentTime = 0;
-
-      mockNow = jest.fn().mockImplementation(() => currentTime);
-
-      ReactTestRenderer.unstable_setNowImplementation(mockNow);
-      advanceTimeBy = amount => {
-        currentTime += amount;
-      };
-    };
-
     beforeEach(() => {
       jest.resetModules();
 
       loadModules();
-      mockNowForTests();
-
-      AdvanceTime = class extends React.Component {
-        static defaultProps = {
-          byAmount: 10,
-          shouldComponentUpdate: true,
-        };
-        shouldComponentUpdate(nextProps) {
-          return nextProps.shouldComponentUpdate;
-        }
-        render() {
-          // Simulate time passing when this component is rendered
-          advanceTimeBy(this.props.byAmount);
-          return this.props.children || null;
-        }
-      };
     });
 
     it('is not invoked until the commit phase', () => {
@@ -218,13 +219,14 @@ describe('Profiler', () => {
 
       let [call] = callback.mock.calls;
 
-      expect(call).toHaveLength(6);
+      expect(call).toHaveLength(7);
       expect(call[0]).toBe('test');
       expect(call[1]).toBe('mount');
       expect(call[2]).toBe(10); // actual time
       expect(call[3]).toBe(10); // base time
       expect(call[4]).toBe(5); // start time
       expect(call[5]).toBe(15); // commit time
+      expect(call[6]).toEqual([]); // interaction events
 
       callback.mockReset();
 
@@ -240,13 +242,14 @@ describe('Profiler', () => {
 
       [call] = callback.mock.calls;
 
-      expect(call).toHaveLength(6);
+      expect(call).toHaveLength(7);
       expect(call[0]).toBe('test');
       expect(call[1]).toBe('update');
       expect(call[2]).toBe(10); // actual time
       expect(call[3]).toBe(10); // base time
       expect(call[4]).toBe(35); // start time
       expect(call[5]).toBe(45); // commit time
+      expect(call[6]).toEqual([]); // interaction events
 
       callback.mockReset();
 
@@ -262,13 +265,14 @@ describe('Profiler', () => {
 
       [call] = callback.mock.calls;
 
-      expect(call).toHaveLength(6);
+      expect(call).toHaveLength(7);
       expect(call[0]).toBe('test');
       expect(call[1]).toBe('update');
       expect(call[2]).toBe(4); // actual time
       expect(call[3]).toBe(4); // base time
       expect(call[4]).toBe(65); // start time
       expect(call[5]).toBe(69); // commit time
+      expect(call[6]).toEqual([]); // interaction events
     });
 
     it('includes render times of nested Profilers in their parent times', () => {
@@ -764,7 +768,7 @@ describe('Profiler', () => {
         advanceTimeBy(5); // 0 -> 5
 
         const renderer = ReactTestRenderer.create(
-          <React.unstable_Profiler id="test" onRender={callback} foo="1">
+          <React.unstable_Profiler id="test" onRender={callback}>
             <FirstComponent />
             <SecondComponent />
           </React.unstable_Profiler>,
@@ -849,7 +853,6 @@ describe('Profiler', () => {
             loadModules({
               replayFailedUnitOfWorkWithInvokeGuardedCallback: flagEnabled,
             });
-            mockNowForTests();
           });
 
           it('should accumulate actual time after an error handled by componentDidCatch()', () => {
@@ -896,13 +899,13 @@ describe('Profiler', () => {
             expect(mountCall[1]).toBe('mount');
             // actual time includes: 2 (ErrorBoundary) + 5 (AdvanceTime) + 10 (ThrowsError)
             // If replayFailedUnitOfWorkWithInvokeGuardedCallback is enbaled, ThrowsError is replayed.
-            expect(mountCall[2]).toBe(flagEnabled && __DEV__ ? 27 : 17);
+            expect(mountCall[2]).toBe(flagEnabled && __PROFILE__ ? 27 : 17);
             // base time includes: 2 (ErrorBoundary)
             expect(mountCall[3]).toBe(2);
             // start time
             expect(mountCall[4]).toBe(5);
             // commit time
-            expect(mountCall[5]).toBe(flagEnabled && __DEV__ ? 32 : 22);
+            expect(mountCall[5]).toBe(flagEnabled && __PROFILE__ ? 32 : 22);
 
             // The update includes the ErrorBoundary and its fallback child
             expect(updateCall[1]).toBe('update');
@@ -911,9 +914,9 @@ describe('Profiler', () => {
             // base time includes: 2 (ErrorBoundary) + 20 (AdvanceTime)
             expect(updateCall[3]).toBe(22);
             // start time
-            expect(updateCall[4]).toBe(flagEnabled && __DEV__ ? 32 : 22);
+            expect(updateCall[4]).toBe(flagEnabled && __PROFILE__ ? 32 : 22);
             // commit time
-            expect(updateCall[5]).toBe(flagEnabled && __DEV__ ? 54 : 44);
+            expect(updateCall[5]).toBe(flagEnabled && __PROFILE__ ? 54 : 44);
           });
 
           it('should accumulate actual time after an error handled by getDerivedStateFromCatch()', () => {
@@ -961,13 +964,13 @@ describe('Profiler', () => {
             // actual time includes: 2 (ErrorBoundary) + 5 (AdvanceTime) + 10 (ThrowsError)
             // Then the re-render: 2 (ErrorBoundary) + 20 (AdvanceTime)
             // If replayFailedUnitOfWorkWithInvokeGuardedCallback is enbaled, ThrowsError is replayed.
-            expect(mountCall[2]).toBe(flagEnabled && __DEV__ ? 49 : 39);
+            expect(mountCall[2]).toBe(flagEnabled && __PROFILE__ ? 49 : 39);
             // base time includes: 2 (ErrorBoundary) + 20 (AdvanceTime)
             expect(mountCall[3]).toBe(22);
             // start time
             expect(mountCall[4]).toBe(5);
             // commit time
-            expect(mountCall[5]).toBe(flagEnabled && __DEV__ ? 54 : 44);
+            expect(mountCall[5]).toBe(flagEnabled && __PROFILE__ ? 54 : 44);
           });
 
           it('should reset the fiber stack correct after a "complete" phase error', () => {
@@ -1108,5 +1111,435 @@ describe('Profiler', () => {
     ReactNoop.flush();
 
     expect(ReactNoop.getRoot('two').current.actualDuration).toBe(14);
+  });
+
+  describe('interaction tracking', () => {
+    beforeEach(() => {
+      jest.resetModules();
+
+      loadModules();
+    });
+
+    it('should associate tracked events with their subsequent commits', () => {
+      let instance = null;
+
+      const Yield = ({duration = 10, value}) => {
+        advanceTimeBy(duration);
+        ReactTestRenderer.unstable_yield(value);
+        return null;
+      };
+
+      class Example extends React.Component {
+        state = {
+          count: 0,
+        };
+        render() {
+          instance = this;
+          return (
+            <React.Fragment>
+              <Yield value="first" />
+              {this.state.count}
+              <Yield value="last" />
+            </React.Fragment>
+          );
+        }
+      }
+
+      const onRender = jest.fn();
+      const renderer = ReactTestRenderer.create(
+        <React.unstable_Profiler id="test-profiler" onRender={onRender}>
+          <Example />
+        </React.unstable_Profiler>,
+        {
+          unstable_isAsync: true,
+        },
+      );
+
+      advanceTimeBy(1);
+
+      // Mount
+      const creationEventTime = mockNow();
+      InteractionTracking.track('creation event', () => {
+        renderer.unstable_flushAll(['first', 'last']);
+      });
+
+      expect(onRender).toHaveBeenCalledTimes(1);
+      let call = onRender.mock.calls[0];
+      expect(call[0]).toEqual('test-profiler');
+      expect(call[5]).toEqual(mockNow());
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'creation event',
+                timestamp: creationEventTime,
+              },
+            ]
+          : [],
+      );
+
+      onRender.mockClear();
+
+      advanceTimeBy(3);
+
+      let didRunCallback = false;
+
+      const initialEventTime = mockNow();
+      InteractionTracking.track('initial event', () => {
+        advanceTimeBy(5);
+        const firstUpdateTime = mockNow();
+        InteractionTracking.addContext('first update');
+
+        advanceTimeBy(9);
+        const secondUpdateTime = mockNow();
+        InteractionTracking.addContext('second update');
+        expect(onRender).not.toHaveBeenCalled();
+
+        instance.setState({count: 1});
+
+        // Update state again to verify our tracked interaction isn't registered twice
+        instance.setState({count: 2});
+
+        expect(renderer).toFlushThrough(['first']);
+        expect(onRender).not.toHaveBeenCalled();
+
+        renderer.unstable_flushAll(['last']);
+        expect(onRender).toHaveBeenCalledTimes(1);
+
+        call = onRender.mock.calls[0];
+        expect(call[0]).toEqual('test-profiler');
+        expect(call[5]).toEqual(mockNow());
+        expect(call[6]).toEqual(
+          __PROFILE__
+            ? [
+                {
+                  children: [
+                    {
+                      children: null,
+                      name: 'first update',
+                      timestamp: firstUpdateTime,
+                    },
+                    {
+                      children: null,
+                      name: 'second update',
+                      timestamp: secondUpdateTime,
+                    },
+                  ],
+                  name: 'initial event',
+                  timestamp: initialEventTime,
+                },
+              ]
+            : [],
+        );
+
+        didRunCallback = true;
+      });
+
+      expect(didRunCallback).toBe(true);
+
+      onRender.mockClear();
+
+      advanceTimeBy(17);
+
+      // Verify that updating state again does not re-log our interaction.
+      instance.setState({count: 3});
+      renderer.unstable_flushAll(['first', 'last']);
+
+      expect(onRender).toHaveBeenCalledTimes(1);
+      call = onRender.mock.calls[0];
+      expect(call[0]).toEqual('test-profiler');
+      expect(call[5]).toEqual(mockNow());
+      expect(call[6]).toHaveLength(0);
+
+      advanceTimeBy(3);
+
+      onRender.mockClear();
+
+      // Verify that root updates are also associated with tracked events.
+      renderer.update(
+        <React.unstable_Profiler id="test-profiler" onRender={onRender}>
+          <Example />
+        </React.unstable_Profiler>,
+      );
+      const rootUpdateEventTime = mockNow();
+      InteractionTracking.track('root update event', () => {
+        renderer.unstable_flushAll(['first', 'last']);
+      });
+
+      expect(onRender).toHaveBeenCalledTimes(1);
+      call = onRender.mock.calls[0];
+      expect(call[0]).toEqual('test-profiler');
+      expect(call[5]).toEqual(mockNow());
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'root update event',
+                timestamp: rootUpdateEventTime,
+              },
+            ]
+          : [],
+      );
+    });
+
+    it('should report the expected times when a high-priority update interrupts a low-priority update', () => {
+      const onRender = jest.fn();
+
+      let first;
+      class FirstComponent extends React.Component {
+        state = {count: 0};
+        render() {
+          first = this;
+          ReactTestRenderer.unstable_yield('FirstComponent');
+          return null;
+        }
+      }
+      let second;
+      class SecondComponent extends React.Component {
+        state = {count: 0};
+        render() {
+          second = this;
+          ReactTestRenderer.unstable_yield('SecondComponent');
+          return null;
+        }
+      }
+
+      advanceTimeBy(5);
+
+      const renderer = ReactTestRenderer.create(
+        <React.unstable_Profiler id="test" onRender={onRender}>
+          <FirstComponent />
+          <SecondComponent />
+        </React.unstable_Profiler>,
+        {unstable_isAsync: true},
+      );
+
+      // Initial mount.
+      renderer.unstable_flushAll(['FirstComponent', 'SecondComponent']);
+
+      onRender.mockClear();
+
+      advanceTimeBy(100);
+
+      const lowPriTime = mockNow();
+
+      InteractionTracking.track('lowPri', () => {
+        // Render a partially update, but don't finish.
+        first.setState({count: 1});
+        expect(renderer).toFlushThrough(['FirstComponent']);
+        expect(onRender).not.toHaveBeenCalled();
+
+        advanceTimeBy(100);
+
+        let highPriTime;
+
+        // Interrupt with higher priority work.
+        // This simulates a total of 37ms of actual render time.
+        highPriTime = mockNow();
+        renderer.unstable_flushSync(() => {
+          InteractionTracking.track('highPri', () => {
+            second.setState({count: 1});
+          });
+        });
+        expect(ReactTestRenderer).toClearYields(['SecondComponent']);
+
+        // Verify the high priority update was associated with the high priority event.
+        expect(onRender).toHaveBeenCalledTimes(1);
+        let call = onRender.mock.calls[0];
+        expect(call[0]).toEqual('test');
+        expect(call[5]).toEqual(mockNow());
+        expect(call[6]).toEqual(
+          __PROFILE__
+            ? [
+                {children: null, name: 'lowPri', timestamp: lowPriTime},
+                {children: null, name: 'highPri', timestamp: highPriTime},
+              ]
+            : [],
+        );
+
+        onRender.mockClear();
+
+        advanceTimeBy(100);
+
+        // Resume the original low priority update, with rebased state.
+        // Verify the low priority update was retained.
+        renderer.unstable_flushAll(['FirstComponent']);
+        expect(onRender).toHaveBeenCalledTimes(1);
+        call = onRender.mock.calls[0];
+        expect(call[0]).toEqual('test');
+        expect(call[5]).toEqual(mockNow());
+        expect(call[6]).toEqual(
+          __PROFILE__
+            ? [{children: null, name: 'lowPri', timestamp: lowPriTime}]
+            : [],
+        );
+      });
+    });
+
+    it('should track work spawned by a commit phase lifecycles and setState callbacks', () => {
+      let instance;
+      class Example extends React.Component {
+        state = {
+          count: 0,
+        };
+        componentDidMount() {
+          advanceTimeBy(10); // Advance timer to keep commits separate
+          this.setState({count: 1}); // Intentional cascading update
+        }
+        componentDidUpdate(prevProps, prevState) {
+          if (this.state.count === 2 && prevState.count === 1) {
+            advanceTimeBy(10); // Advance timer to keep commits separate
+            this.setState({count: 3}); // Intentional cascading update
+          }
+        }
+        render() {
+          instance = this;
+          ReactTestRenderer.unstable_yield('Example:' + this.state.count);
+          return null;
+        }
+      }
+
+      // Initial mount.
+      const onRender = jest.fn();
+      const renderer = ReactTestRenderer.create(
+        <React.unstable_Profiler id="test" onRender={onRender}>
+          <Example />
+        </React.unstable_Profiler>,
+        {unstable_isAsync: true},
+      );
+
+      let firstCommitTime = mockNow();
+      let trackedEventTime = mockNow();
+      InteractionTracking.track('componentDidMount test', () => {
+        renderer.unstable_flushAll(['Example:0', 'Example:1']);
+      });
+
+      expect(onRender).toHaveBeenCalledTimes(2);
+      let call = onRender.mock.calls[0];
+      expect(call[0]).toEqual('test');
+      expect(call[5]).toEqual(firstCommitTime);
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'componentDidMount test',
+                timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
+      call = onRender.mock.calls[1];
+      expect(call[0]).toEqual('test');
+      expect(call[5]).toEqual(mockNow());
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'componentDidMount test',
+                timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
+
+      onRender.mockClear();
+
+      // Cause an tracked, async update
+      trackedEventTime = mockNow();
+      InteractionTracking.track('componentDidUpdate test', () => {
+        instance.setState({count: 2});
+      });
+      expect(onRender).not.toHaveBeenCalled();
+
+      advanceTimeBy(5);
+
+      // Flush async work (outside of tracked scope)
+      // This will cause an intentional cascading update from did-update
+      firstCommitTime = mockNow();
+      renderer.unstable_flushAll(['Example:2', 'Example:3']);
+
+      // Verify the cascading commit is associated with the origin event
+      expect(onRender).toHaveBeenCalledTimes(2);
+      call = onRender.mock.calls[0];
+      expect(call[0]).toEqual('test');
+      expect(call[5]).toEqual(firstCommitTime);
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'componentDidUpdate test',
+                timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
+      call = onRender.mock.calls[1];
+      expect(call[0]).toEqual('test');
+      expect(call[5]).toEqual(mockNow());
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'componentDidUpdate test',
+                timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
+
+      onRender.mockClear();
+
+      // Cause a cascading update from the setState callback
+      trackedEventTime = mockNow();
+      function callback() {
+        instance.setState({count: 6});
+      }
+      InteractionTracking.track('setState callback test', () => {
+        instance.setState({count: 5}, callback);
+      });
+      expect(onRender).not.toHaveBeenCalled();
+
+      // Flush async work (outside of tracked scope)
+      // This will cause an intentional cascading update from the setState callback
+      firstCommitTime = mockNow();
+      renderer.unstable_flushAll(['Example:5', 'Example:6']);
+
+      // Verify the cascading commit is associated with the origin event
+      expect(onRender).toHaveBeenCalledTimes(2);
+      call = onRender.mock.calls[0];
+      expect(call[0]).toEqual('test');
+      expect(call[5]).toEqual(firstCommitTime);
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'setState callback test',
+                timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
+      call = onRender.mock.calls[1];
+      expect(call[0]).toEqual('test');
+      expect(call[5]).toEqual(mockNow());
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'setState callback test',
+                timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
+    });
   });
 });

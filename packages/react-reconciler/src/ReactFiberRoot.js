@@ -10,11 +10,18 @@
 import type {Fiber} from './ReactFiber';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {TimeoutHandle, NoTimeout} from './ReactFiberHostConfig';
+import type {Interaction} from 'interaction-tracking/src/InteractionTracking';
 
+import {getCurrentEvents} from 'interaction-tracking';
 import {noTimeout} from './ReactFiberHostConfig';
-
+import {isDevToolsPresent} from './ReactFiberDevToolsHook';
 import {createHostRootFiber} from './ReactFiber';
 import {NoWork} from './ReactFiberExpirationTime';
+import {
+  requestCurrentTime,
+  computeExpirationForFiber,
+} from './ReactFiberScheduler';
+import {enableProfilerTimer} from 'shared/ReactFeatureFlags';
 
 // TODO: This should be lifted into the renderer.
 export type Batch = {
@@ -23,6 +30,9 @@ export type Batch = {
   _onComplete: () => mixed,
   _next: Batch | null,
 };
+
+export type CommittedInteractions = Set<Interaction>;
+export type PendingInteractionMap = Map<ExpirationTime, Set<Interaction>>;
 
 export type FiberRoot = {
   // Any additional information from the host associated with this root.
@@ -73,6 +83,12 @@ export type FiberRoot = {
   firstBatch: Batch | null,
   // Linked-list of roots
   nextScheduledRoot: FiberRoot | null,
+
+  // The HostRoot's stateNode is only used by profiling builds (i.e. when enableProfilerTimer is true),
+  // And only when the React DevTools are detected (i.e. isDevToolsPresent is true).
+  // Interaction metadata is stored on the stateNode in this case so that DevTools can record it during commit.
+  committedInteractions?: CommittedInteractions,
+  pendingInteractionMap?: PendingInteractionMap,
 };
 
 export function createFiberRoot(
@@ -107,6 +123,34 @@ export function createFiberRoot(
     firstBatch: null,
     nextScheduledRoot: null,
   };
+
+  if (enableProfilerTimer) {
+    if (isDevToolsPresent) {
+      const currentTime = requestCurrentTime();
+      const expirationTime = computeExpirationForFiber(
+        currentTime,
+        uninitializedFiber,
+      );
+
+      // Store interactions on the root fiber if DevTools are present.
+      // This enables DevTools to record interactions for each commit batch,
+      // For the entire tree.
+      const pendingInteractionMap = new Map();
+
+      // Map of expiration time to interaction events.
+      // Populated when state updates are enqueued during a tracked interaction.
+      ((root: any): FiberRoot).committedInteractions = new Set();
+      ((root: any): FiberRoot).pendingInteractionMap = pendingInteractionMap;
+
+      // If we are currently tracking an interaction, register it with the HostRoot.
+      // This covers root renderers (e.g. ReactDOM.render(...)) for the initial mount.
+      const interactions = getCurrentEvents();
+      if (interactions !== null) {
+        pendingInteractionMap.set(expirationTime, new Set(interactions));
+      }
+    }
+  }
+
   uninitializedFiber.stateNode = root;
   return root;
 }

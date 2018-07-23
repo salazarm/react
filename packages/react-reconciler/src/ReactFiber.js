@@ -14,11 +14,14 @@ import type {TypeOfMode} from './ReactTypeOfMode';
 import type {TypeOfSideEffect} from 'shared/ReactTypeOfSideEffect';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {UpdateQueue} from './ReactUpdateQueue';
+import type {Interaction} from 'interaction-tracking/src/InteractionTracking';
+import type {PendingInteractionMap} from './ReactFiberRoot';
 import type {ContextDependency} from './ReactFiberNewContext';
 
 import invariant from 'shared/invariant';
 import {enableProfilerTimer} from 'shared/ReactFeatureFlags';
 import {NoEffect} from 'shared/ReactTypeOfSideEffect';
+import {getCurrentEvents} from 'interaction-tracking';
 import {
   IndeterminateComponent,
   ClassComponent,
@@ -68,6 +71,16 @@ if (__DEV__) {
     hasBadMapPolyfill = true;
   }
 }
+
+// The Profiler's stateNode is only used by profiling builds (i.e. when enableProfilerTimer is true).
+// During the render phase, it populates a map of expiration timese to interactions,
+// Which the Profiler uses to determine which interactions are associated with a later commit.
+// During the commit phase, the related interactions are termporarily stored in an Array,
+// So that class components within the sub-tree can associate cascading updates with those events.
+export type ProfilerStateNode = {|
+  committedInteractions: Set<Interaction>,
+  pendingInteractionMap: Map<ExpirationTime, Set<Interaction>>,
+|};
 
 // A Fiber is work on a Component that needs to be done or was done. There can
 // be more than one per component.
@@ -358,6 +371,49 @@ export function createWorkInProgress(
   if (enableProfilerTimer) {
     workInProgress.selfBaseDuration = current.selfBaseDuration;
     workInProgress.treeBaseDuration = current.treeBaseDuration;
+
+    if (current.type === REACT_PROFILER_TYPE) {
+      // If we are currently tracking an interaction, register it with the Profiler.
+      // This covers root renders (e.g. ReactDOM.render(...)) for updates.
+      const interactions = getCurrentEvents();
+      if (interactions !== null) {
+        const {
+          pendingInteractionMap,
+        } = ((workInProgress.stateNode: any): ProfilerStateNode);
+
+        if (pendingInteractionMap.has(expirationTime)) {
+          // eslint-disable-next-line no-var
+          const set = ((pendingInteractionMap.get(expirationTime): any): Set<
+            Interaction,
+          >);
+          interactions.forEach(interaction => set.add(interaction));
+        } else {
+          pendingInteractionMap.set(expirationTime, new Set(interactions));
+        }
+      }
+    }
+
+    if (isDevToolsPresent) {
+      if (current.tag === HostRoot) {
+        // If we are currently tracking an interaction, register it with the Profiler.
+        // This covers root renders (e.g. ReactDOM.render(...)) for updates.
+        const interactions = getCurrentEvents();
+        if (interactions !== null) {
+          const pendingInteractionMap = (((workInProgress.stateNode: any)
+            .pendingInteractionMap: any): PendingInteractionMap);
+
+          if (pendingInteractionMap.has(expirationTime)) {
+            // eslint-disable-next-line no-var
+            const set = ((pendingInteractionMap.get(expirationTime): any): Set<
+              Interaction,
+            >);
+            interactions.forEach(interaction => set.add(interaction));
+          } else {
+            pendingInteractionMap.set(expirationTime, new Set(interactions));
+          }
+        }
+      }
+    }
   }
 
   return workInProgress;
@@ -511,6 +567,24 @@ export function createFiberFromProfiler(
   const fiber = createFiber(Profiler, pendingProps, key, mode | ProfileMode);
   fiber.type = REACT_PROFILER_TYPE;
   fiber.expirationTime = expirationTime;
+
+  if (enableProfilerTimer) {
+    const pendingInteractionMap = new Map();
+
+    // Map of expiration time to interaction events.
+    // Populated when state updates are enqueued during a tracked interaction.
+    fiber.stateNode = {
+      committedInteractions: new Set(),
+      pendingInteractionMap,
+    };
+
+    // If we are currently tracking an interaction, register it with the Profiler.
+    // This covers root renderers (e.g. ReactDOM.render(...)) for the initial mount.
+    const interactions = getCurrentEvents();
+    if (interactions !== null) {
+      pendingInteractionMap.set(expirationTime, new Set(interactions));
+    }
+  }
 
   return fiber;
 }
