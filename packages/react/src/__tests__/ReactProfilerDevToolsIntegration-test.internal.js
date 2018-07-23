@@ -183,7 +183,6 @@ describe('ReactProfiler DevTools integration', () => {
       rendered.update(<div />);
     });
 
-    //const root = rendered.root._currentFiber().return;
     expect(Array.from(root.stateNode.committedInteractions)).toEqual(
       __PROFILE__
         ? [{children: null, name: 'some event', timestamp: eventTime}]
