@@ -205,6 +205,14 @@ describe('InteractionTracking', () => {
             expect(InteractionTracking.getCurrentEvents()).toEqual(oldEvents);
             InteractionTracking.stopContinuation();
 
+            InteractionTracking.startContinuation(undefined);
+            expect(InteractionTracking.getCurrentEvents()).toEqual(undefined);
+            InteractionTracking.stopContinuation();
+
+            InteractionTracking.startContinuation(null);
+            expect(InteractionTracking.getCurrentEvents()).toEqual(null);
+            InteractionTracking.stopContinuation();
+
             expect(InteractionTracking.getCurrentEvents()).toEqual([
               {children: null, name: 'new event', timestamp: 15},
             ]);

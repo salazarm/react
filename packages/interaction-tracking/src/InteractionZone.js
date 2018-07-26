@@ -15,6 +15,7 @@ type ZoneContext = any;
 
 let continuationContext: ZoneContext | null = null;
 let currentContext: ZoneContext | null = null;
+let isInContinuation: boolean = false;
 
 export function track(context: ZoneContext, callback: Function): void {
   if (!__PROFILE__) {
@@ -53,17 +54,18 @@ export function wrap(callback: Function): Function {
   };
 }
 
-export function startContinuation(context: ZoneContext): void {
+export function startContinuation(context: ZoneContext | null): void {
   if (!__PROFILE__) {
     return;
   }
   if (__DEV__) {
     invariant(
-      continuationContext === null,
+      !isInContinuation,
       'Cannot start a continuation when one is already active.',
     );
   }
   continuationContext = context;
+  isInContinuation = true;
 }
 
 export function stopContinuation(): void {
@@ -72,17 +74,18 @@ export function stopContinuation(): void {
   }
   if (__DEV__) {
     invariant(
-      continuationContext !== null,
+      isInContinuation,
       'Cannot stop a continuation when none is active.',
     );
   }
   continuationContext = null;
+  isInContinuation = false;
 }
 
 export function getCurrentContext(): ZoneContext | null {
   if (!__PROFILE__) {
     return null;
   } else {
-    return continuationContext !== null ? continuationContext : currentContext;
+    return isInContinuation ? continuationContext : currentContext;
   }
 }
