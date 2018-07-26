@@ -58,12 +58,10 @@ export function startContinuation(context: ZoneContext | null): void {
   if (!__PROFILE__) {
     return;
   }
-  if (__DEV__) {
-    invariant(
-      !isInContinuation,
-      'Cannot start a continuation when one is already active.',
-    );
-  }
+  invariant(
+    !isInContinuation,
+    'Cannot start a continuation when one is already active.',
+  );
   continuationContext = context;
   isInContinuation = true;
 }
@@ -72,12 +70,10 @@ export function stopContinuation(): void {
   if (!__PROFILE__) {
     return;
   }
-  if (__DEV__) {
-    invariant(
-      isInContinuation,
-      'Cannot stop a continuation when none is active.',
-    );
-  }
+  invariant(
+    isInContinuation,
+    'Cannot stop a continuation when none is active.',
+  );
   continuationContext = null;
   isInContinuation = false;
 }

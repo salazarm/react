@@ -83,12 +83,10 @@ export function addContext(name: string): void {
   }
 
   const interactions: Interactions | null = getZoneCurrentContext();
-  if (__DEV__) {
-    invariant(
-      interactions !== null && interactions.length > 0,
-      'Context cannot be added outside of a tracked event.',
-    );
-  }
+  invariant(
+    interactions !== null && interactions.length > 0,
+    'Context cannot be added outside of a tracked event.',
+  );
 
   const context: Interaction = {
     children: null,
