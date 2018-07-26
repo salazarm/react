@@ -23,7 +23,6 @@ import {
   HostPortal,
   ContextProvider,
   PlaceholderComponent,
-  Profiler,
 } from 'shared/ReactTypeOfWork';
 import {
   DidCapture,
@@ -39,7 +38,7 @@ import {
   enableSuspense,
 } from 'shared/ReactFeatureFlags';
 import {ProfileMode, StrictMode, AsyncMode} from './ReactTypeOfMode';
-import {popProfilerStateNode} from './ReactProfilerStack';
+
 import {createCapturedValue} from './ReactCapturedValue';
 import {
   enqueueCapturedUpdate,
@@ -427,11 +426,6 @@ function unwindWork(
     case ContextProvider:
       popProvider(workInProgress);
       return null;
-    case Profiler:
-      if (enableProfilerTimer) {
-        popProfilerStateNode(workInProgress);
-      }
-      return null;
     default:
       return null;
   }
@@ -463,11 +457,6 @@ function unwindInterruptedWork(interruptedWork: Fiber) {
       break;
     case ContextProvider:
       popProvider(interruptedWork);
-      break;
-    case Profiler:
-      if (enableProfilerTimer) {
-        popProfilerStateNode(interruptedWork);
-      }
       break;
     default:
       break;

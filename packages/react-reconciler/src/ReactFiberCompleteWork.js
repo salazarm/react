@@ -7,7 +7,7 @@
  * @flow
  */
 
-import type {Fiber} from 'react-reconciler/src/ReactFiber';
+import type {Fiber} from './ReactFiber';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {FiberRoot} from './ReactFiberRoot';
 import type {
@@ -20,7 +20,6 @@ import type {
   HostContext,
 } from './ReactFiberHostConfig';
 
-import {popProfilerStateNode} from './ReactProfilerStack';
 import {enableProfilerTimer} from 'shared/ReactFeatureFlags';
 import {
   IndeterminateComponent,
@@ -491,9 +490,6 @@ function completeWork(
     case Mode:
       break;
     case Profiler:
-      if (enableProfilerTimer) {
-        popProfilerStateNode(workInProgress);
-      }
       break;
     case HostPortal:
       popHostContainer(workInProgress);

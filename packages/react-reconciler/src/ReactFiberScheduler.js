@@ -7,17 +7,15 @@
  * @flow
  */
 
-import type {Fiber, ProfilerStateNode} from './ReactFiber';
-import type {Interaction} from 'interaction-tracking/src/InteractionTracking';
-import type {
-  Batch,
-  CommittedInteractions,
-  FiberRoot,
-  PendingInteractionMap,
-} from './ReactFiberRoot';
+import type {Fiber} from './ReactFiber';
+import type {Batch, FiberRoot} from './ReactFiberRoot';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 
-import {getCurrentEvents} from 'interaction-tracking';
+import {startContinuation, stopContinuation} from 'interaction-tracking';
+import {
+  getInteractionsForExpirationTime,
+  recordInteractionsForExpirationTime,
+} from './ReactProfilerInteractions';
 import ReactErrorUtils from 'shared/ReactErrorUtils';
 import ReactSharedInternals from 'shared/ReactSharedInternals';
 import ReactStrictModeWarnings from './ReactStrictModeWarnings';
@@ -42,7 +40,6 @@ import {
   HostComponent,
   ContextProvider,
   HostPortal,
-  Profiler,
 } from 'shared/ReactTypeOfWork';
 import {
   enableProfilerTimer,
@@ -56,8 +53,6 @@ import getComponentName from 'shared/getComponentName';
 import invariant from 'shared/invariant';
 import warningWithoutStack from 'shared/warningWithoutStack';
 
-import {popProfilerStateNode} from './ReactProfilerStack';
-import {REACT_PROFILER_TYPE} from 'shared/ReactSymbols';
 import {
   scheduleTimeout,
   cancelTimeout,
@@ -102,7 +97,7 @@ import {
   stopCommitLifeCyclesTimer,
 } from './ReactDebugFiberPerf';
 import {createWorkInProgress, assignFiberPropertiesInDEV} from './ReactFiber';
-import {isDevToolsPresent, onCommitRoot} from './ReactFiberDevToolsHook';
+import {onCommitRoot} from './ReactFiberDevToolsHook';
 import {
   NoWork,
   Sync,
@@ -315,11 +310,6 @@ if (__DEV__ && replayFailedUnitOfWorkWithInvokeGuardedCallback) {
       case ContextProvider:
         popProvider(failedUnitOfWork);
         break;
-      case Profiler:
-        if (enableProfilerTimer) {
-          popProfilerStateNode(failedUnitOfWork);
-        }
-        break;
     }
     // Replay the begin phase.
     isReplayingFailedUnitOfWork = true;
@@ -376,7 +366,7 @@ function resetStack() {
   nextUnitOfWork = null;
 }
 
-function commitAllHostEffects(committedExpirationTime: ExpirationTime) {
+function commitAllHostEffects() {
   while (nextEffect !== null) {
     if (__DEV__) {
       ReactCurrentFiber.setCurrentFiber(nextEffect);
@@ -421,12 +411,12 @@ function commitAllHostEffects(committedExpirationTime: ExpirationTime) {
 
         // Update
         const current = nextEffect.alternate;
-        commitWork(current, nextEffect, committedExpirationTime);
+        commitWork(current, nextEffect);
         break;
       }
       case Update: {
         const current = nextEffect.alternate;
-        commitWork(current, nextEffect, committedExpirationTime);
+        commitWork(current, nextEffect);
         break;
       }
       case Deletion: {
@@ -558,6 +548,24 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
       : updateExpirationTimeBeforeCommit;
   markCommittedPriorityLevels(root, earliestRemainingTimeBeforeCommit);
 
+  let interactions = null;
+  if (enableProfilerTimer) {
+    interactions = getInteractionsForExpirationTime(
+      root,
+      committedExpirationTime,
+      true,
+    );
+
+    startContinuation(interactions !== null ? Array.from(interactions) : []);
+
+    // We store the committed interactions on the FiberRoot for two reasons:
+    // Firstly, this is how DevTools will access them when the onCommitRoot() hook is called.
+    // Secondly, this is how commitWork() will access them to pass them to any Profiler onRender() hooks.
+    // commitWork() can't use getInteractionsForExpirationTime() because the interactions have already been cleared.
+    // We can't wait to clear them out of the Map after commitWork() either, or we'll wipe out cascading updates.
+    finishedWork.stateNode.committedInteractions = interactions;
+  }
+
   // Reset this to null before calling lifecycles
   ReactCurrentOwner.current = null;
 
@@ -619,36 +627,6 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
     // Mark the current commit time to be shared by all Profilers in this batch.
     // This enables them to be grouped later.
     recordCommitTime();
-
-    if (isDevToolsPresent) {
-      const committedInteractions = (((finishedWork.stateNode: any)
-        .committedInteractions: any): CommittedInteractions);
-      const pendingInteractionMap = (((finishedWork.stateNode: any)
-        .pendingInteractionMap: any): PendingInteractionMap);
-
-      // Clear previous interactions.
-      committedInteractions.clear();
-
-      // Find any interaction events that were related to this commit,
-      // And remove them from the pending Map (since they've now been committed).
-      // They'll be re-added to the Map later if they cause a cascading update.
-      pendingInteractionMap.forEach((events, expirationTime) => {
-        if (expirationTime <= committedExpirationTime) {
-          events.forEach(event => {
-            // DevTools records interactions for a commit by checking the HostRoot stateNode.
-            // So store any interactions we've just committed there temporarily.
-            // They'll be removed by the subsequent commit.
-            // TODO (bvaughn) Should I use a Set here instead of an Array?
-            // Currently it might be possible for the same event to be tracked for multiple expiration times.
-            committedInteractions.add(event);
-          });
-
-          // Delete processed events so we don't log them again later.
-          // If they trigger a cascading update, they'll be re-added.
-          pendingInteractionMap.delete(expirationTime);
-        }
-      });
-    }
   }
 
   // Commit all the side-effects within a tree. We'll do this in two passes.
@@ -660,19 +638,14 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
     let didError = false;
     let error;
     if (__DEV__) {
-      invokeGuardedCallback(
-        null,
-        commitAllHostEffects,
-        null,
-        committedExpirationTime,
-      );
+      invokeGuardedCallback(null, commitAllHostEffects, null);
       if (hasCaughtError()) {
         didError = true;
         error = clearCaughtError();
       }
     } else {
       try {
-        commitAllHostEffects(committedExpirationTime);
+        commitAllHostEffects();
       } catch (e) {
         didError = true;
         error = e;
@@ -777,6 +750,10 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
     legacyErrorBoundariesThatAlreadyFailed = null;
   }
   onCommit(root, earliestRemainingTimeAfterCommit);
+
+  if (enableProfilerTimer) {
+    stopContinuation();
+  }
 }
 
 function resetChildExpirationTime(
@@ -1093,6 +1070,19 @@ function renderRoot(
 
   const expirationTime = root.nextExpirationTimeToWorkOn;
 
+  let interactions = null;
+  if (enableProfilerTimer) {
+    // Restore any pending interactions at this point,
+    // So that cascading work triggered during the render phase will be accounted for.
+    // We should not clear these interactions out yet, because we'll need them again during "commit".
+    interactions = getInteractionsForExpirationTime(
+      root,
+      expirationTime,
+      false,
+    );
+    startContinuation(interactions !== null ? Array.from(interactions) : []);
+  }
+
   // Check if we're starting from a fresh stack, or if we're resuming from
   // previously yielded work.
   if (
@@ -1177,6 +1167,10 @@ function renderRoot(
     }
     break;
   } while (true);
+
+  if (enableProfilerTimer) {
+    stopContinuation();
+  }
 
   // We're done performing work. Time to clean up.
   isWorking = false;
@@ -1536,49 +1530,12 @@ function scheduleWork(fiber: Fiber, expirationTime: ExpirationTime) {
   recordScheduleUpdate();
 
   if (enableProfilerTimer) {
-    if (fiber.mode & ProfileMode) {
-      // If we are currently tracking an interaction, register it with parent Profiler(s).
-      const interactions = getCurrentEvents();
-      if (interactions !== null) {
-        let current = fiber;
-        while (current.return !== null) {
-          current = current.return;
-          if (current.type === REACT_PROFILER_TYPE) {
-            const {
-              pendingInteractionMap,
-            } = ((current.stateNode: any): ProfilerStateNode);
-
-            if (pendingInteractionMap.has(expirationTime)) {
-              // eslint-disable-next-line no-var
-              var profilerSet = ((pendingInteractionMap.get(
-                expirationTime,
-              ): any): Set<Interaction>);
-              interactions.forEach(interaction => profilerSet.add(interaction));
-            } else {
-              pendingInteractionMap.set(expirationTime, new Set(interactions));
-            }
-          }
-
-          if (isDevToolsPresent) {
-            // Current now points to the HostRoot.
-            // If DevTools is present, store a copy of the interactions there also.
-            // This will enable DevTools to access them during the subsequent commit.
-            const pendingInteractionMap = ((((current.stateNode: any): FiberRoot)
-              .pendingInteractionMap: any): PendingInteractionMap);
-
-            if (pendingInteractionMap.has(expirationTime)) {
-              // eslint-disable-next-line no-var
-              var hostRootSet = ((pendingInteractionMap.get(
-                expirationTime,
-              ): any): Set<Interaction>);
-              interactions.forEach(interaction => hostRootSet.add(interaction));
-            } else {
-              pendingInteractionMap.set(expirationTime, new Set(interactions));
-            }
-          }
-        }
-      }
+    let current = fiber;
+    while (current.return !== null) {
+      current = current.return;
     }
+    // Store the current interaction(s) so it can be associated with the eventual commit.
+    recordInteractionsForExpirationTime(current.stateNode, expirationTime);
   }
 
   if (__DEV__) {
@@ -1699,7 +1656,15 @@ function recomputeCurrentRendererTime() {
   currentRendererTime = msToExpirationTime(currentTimeMs);
 }
 
-function scheduleCallbackWithExpirationTime(expirationTime) {
+function scheduleCallbackWithExpirationTime(
+  root: FiberRoot,
+  expirationTime: ExpirationTime,
+) {
+  if (enableProfilerTimer) {
+    // Store the current interaction(s) so it can be associated with the eventual commit.
+    recordInteractionsForExpirationTime(root, expirationTime);
+  }
+
   if (callbackExpirationTime !== NoWork) {
     // A callback is already scheduled. Check its expiration time (timeout).
     if (expirationTime > callbackExpirationTime) {
@@ -1855,7 +1820,7 @@ function requestWork(root: FiberRoot, expirationTime: ExpirationTime) {
   if (expirationTime === Sync) {
     performSyncWork();
   } else {
-    scheduleCallbackWithExpirationTime(expirationTime);
+    scheduleCallbackWithExpirationTime(root, expirationTime);
   }
 }
 
@@ -2016,7 +1981,10 @@ function performWork(minExpirationTime: ExpirationTime, dl: Deadline | null) {
   }
   // If there's work left over, schedule a new callback.
   if (nextFlushedExpirationTime !== NoWork) {
-    scheduleCallbackWithExpirationTime(nextFlushedExpirationTime);
+    scheduleCallbackWithExpirationTime(
+      ((nextFlushedRoot: any): FiberRoot),
+      nextFlushedExpirationTime,
+    );
   }
 
   // Clean-up.

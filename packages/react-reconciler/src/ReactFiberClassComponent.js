@@ -15,7 +15,6 @@ import {Update, Snapshot} from 'shared/ReactTypeOfSideEffect';
 import {
   debugRenderPhaseSideEffects,
   debugRenderPhaseSideEffectsForStrictMode,
-  enableProfilerTimer,
   warnAboutDeprecatedLifecycles,
 } from 'shared/ReactFeatureFlags';
 import ReactStrictModeWarnings from './ReactStrictModeWarnings';
@@ -24,7 +23,6 @@ import * as ReactInstanceMap from 'shared/ReactInstanceMap';
 import shallowEqual from 'shared/shallowEqual';
 import getComponentName from 'shared/getComponentName';
 import invariant from 'shared/invariant';
-import {wrap} from 'interaction-tracking';
 import warningWithoutStack from 'shared/warningWithoutStack';
 
 import {startPhaseTimer, stopPhaseTimer} from './ReactDebugFiberPerf';
@@ -182,12 +180,7 @@ const classComponentUpdater = {
       if (__DEV__) {
         warnOnInvalidCallback(callback, 'setState');
       }
-      if (enableProfilerTimer) {
-        // Profiling builds should wrap callback with interaction-tracking to associate cascading work
-        update.callback = wrap(callback);
-      } else {
-        update.callback = callback;
-      }
+      update.callback = callback;
     }
 
     enqueueUpdate(fiber, update);
@@ -206,12 +199,7 @@ const classComponentUpdater = {
       if (__DEV__) {
         warnOnInvalidCallback(callback, 'replaceState');
       }
-      if (enableProfilerTimer) {
-        // Profiling builds should wrap callback with interaction-tracking to associate cascading work
-        update.callback = wrap(callback);
-      } else {
-        update.callback = callback;
-      }
+      update.callback = callback;
     }
 
     enqueueUpdate(fiber, update);
@@ -229,12 +217,7 @@ const classComponentUpdater = {
       if (__DEV__) {
         warnOnInvalidCallback(callback, 'forceUpdate');
       }
-      if (enableProfilerTimer) {
-        // Profiling builds should wrap callback with interaction-tracking to associate cascading work
-        update.callback = wrap(callback);
-      } else {
-        update.callback = callback;
-      }
+      update.callback = callback;
     }
 
     enqueueUpdate(fiber, update);

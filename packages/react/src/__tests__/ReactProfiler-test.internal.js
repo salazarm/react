@@ -1145,24 +1145,24 @@ describe('Profiler', () => {
         }
       }
 
-      const onRender = jest.fn();
-      const renderer = ReactTestRenderer.create(
-        <React.unstable_Profiler id="test-profiler" onRender={onRender}>
-          <Example />
-        </React.unstable_Profiler>,
-        {
-          unstable_isAsync: true,
-        },
-      );
-
       advanceTimeBy(1);
+
+      const onRender = jest.fn();
+      let renderer;
+      InteractionTracking.track('creation event', () => {
+        renderer = ReactTestRenderer.create(
+          <React.unstable_Profiler id="test-profiler" onRender={onRender}>
+            <Example />
+          </React.unstable_Profiler>,
+          {
+            unstable_isAsync: true,
+          },
+        );
+      });
 
       // Mount
       const creationEventTime = mockNow();
-      InteractionTracking.track('creation event', () => {
-        renderer.unstable_flushAll(['first', 'last']);
-      });
-
+      renderer.unstable_flushAll(['first', 'last']);
       expect(onRender).toHaveBeenCalledTimes(1);
       let call = onRender.mock.calls[0];
       expect(call[0]).toEqual('test-profiler');
@@ -1257,15 +1257,15 @@ describe('Profiler', () => {
       onRender.mockClear();
 
       // Verify that root updates are also associated with tracked events.
-      renderer.update(
-        <React.unstable_Profiler id="test-profiler" onRender={onRender}>
-          <Example />
-        </React.unstable_Profiler>,
-      );
       const rootUpdateEventTime = mockNow();
       InteractionTracking.track('root update event', () => {
-        renderer.unstable_flushAll(['first', 'last']);
+        renderer.update(
+          <React.unstable_Profiler id="test-profiler" onRender={onRender}>
+            <Example />
+          </React.unstable_Profiler>,
+        );
       });
+      renderer.unstable_flushAll(['first', 'last']);
 
       expect(onRender).toHaveBeenCalledTimes(1);
       call = onRender.mock.calls[0];
@@ -1403,18 +1403,18 @@ describe('Profiler', () => {
 
       // Initial mount.
       const onRender = jest.fn();
-      const renderer = ReactTestRenderer.create(
-        <React.unstable_Profiler id="test" onRender={onRender}>
-          <Example />
-        </React.unstable_Profiler>,
-        {unstable_isAsync: true},
-      );
-
       let firstCommitTime = mockNow();
       let trackedEventTime = mockNow();
+      let renderer;
       InteractionTracking.track('componentDidMount test', () => {
-        renderer.unstable_flushAll(['Example:0', 'Example:1']);
+        renderer = ReactTestRenderer.create(
+          <React.unstable_Profiler id="test" onRender={onRender}>
+            <Example />
+          </React.unstable_Profiler>,
+          {unstable_isAsync: true},
+        );
       });
+      renderer.unstable_flushAll(['Example:0', 'Example:1']);
 
       expect(onRender).toHaveBeenCalledTimes(2);
       let call = onRender.mock.calls[0];
@@ -1536,6 +1536,62 @@ describe('Profiler', () => {
                 children: null,
                 name: 'setState callback test',
                 timestamp: trackedEventTime,
+              },
+            ]
+          : [],
+      );
+    });
+
+    it('should track interactions associated with a parent component state update', () => {
+      const onRender = jest.fn();
+      let parentInstance = null;
+
+      class Child extends React.Component {
+        render() {
+          ReactTestRenderer.unstable_yield('Child:', this.props.count);
+          return null;
+        }
+      }
+
+      class Parent extends React.Component {
+        state = {
+          count: 0,
+        };
+        render() {
+          parentInstance = this;
+          return (
+            <React.unstable_Profiler id="test-profiler" onRender={onRender}>
+              <Child count={this.state.count} />
+            </React.unstable_Profiler>
+          );
+        }
+      }
+
+      advanceTimeBy(1);
+
+      const renderer = ReactTestRenderer.create(<Parent />, {
+        unstable_isAsync: true,
+      });
+      renderer.unstable_flushAll(['Child:0']);
+      onRender.mockClear();
+
+      const creationEventTime = mockNow();
+      InteractionTracking.track('parent interaction', () => {
+        parentInstance.setState({count: 1});
+      });
+
+      expect(onRender).not.toHaveBeenCalled();
+      renderer.unstable_flushAll(['Child:1']);
+      expect(onRender).toHaveBeenCalledTimes(1);
+      let call = onRender.mock.calls[0];
+      expect(call[0]).toEqual('test-profiler');
+      expect(call[6]).toEqual(
+        __PROFILE__
+          ? [
+              {
+                children: null,
+                name: 'parent interaction',
+                timestamp: creationEventTime,
               },
             ]
           : [],
