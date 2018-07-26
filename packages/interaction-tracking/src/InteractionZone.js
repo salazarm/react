@@ -37,11 +37,11 @@ export function wrap(callback: Function): Function {
     return callback;
   }
 
-  if (currentContext === null) {
+  const wrappedContext = getCurrentContext();
+
+  if (wrappedContext === null) {
     return callback;
   }
-
-  const wrappedContext = currentContext;
 
   return (...args) => {
     const prevContext = currentContext;

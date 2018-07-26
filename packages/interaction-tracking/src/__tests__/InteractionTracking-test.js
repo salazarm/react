@@ -230,6 +230,25 @@ describe('InteractionTracking', () => {
             InteractionTracking.stopContinuation();
           }).toThrow('Cannot stop a continuation when none is active.');
         });
+
+        it('should wrap the current continuation if there is one', () => {
+          const continuation = {};
+
+          const callback = jest.fn(() => {
+            expect(InteractionTracking.getCurrentEvents()).toBe(continuation);
+          });
+
+          let wrapped;
+          InteractionTracking.track('new event', () => {
+            InteractionTracking.startContinuation(continuation);
+            wrapped = InteractionTracking.wrap(callback);
+            InteractionTracking.stopContinuation();
+          });
+
+          expect(callback).not.toHaveBeenCalled();
+          wrapped();
+          expect(callback).toHaveBeenCalled();
+        });
       });
 
       describe('error handling', () => {
