@@ -11,6 +11,8 @@ import invariant from 'shared/invariant';
 
 import {
   getCurrentContext as getZoneCurrentContext,
+  startContinuation as startZoneContinuation,
+  stopContinuation as stopZoneContinuation,
   track as trackZone,
   wrap as wrapZone,
 } from './InteractionZone';
@@ -19,8 +21,10 @@ import {
 // So that async callbacks are automatically wrapped with the current tracked event info.
 // For the initial iteration, async callbacks must be explicitely wrapped with wrap().
 
+type Interactions = Array<Interaction>;
+
 export type Interaction = {|
-  children: Array<Interaction> | null,
+  children: Interactions | null,
   name: string,
   timestamp: number,
 |};
@@ -41,6 +45,14 @@ if (typeof performance === 'object' && typeof performance.now === 'function') {
   };
 }
 
+export function startContinuation(interactions: Interactions | null): void {
+  startZoneContinuation(interactions);
+}
+
+export function stopContinuation(): void {
+  stopZoneContinuation();
+}
+
 export function track(name: string, callback: Function): void {
   if (!__PROFILE__) {
     callback();
@@ -55,7 +67,7 @@ export function track(name: string, callback: Function): void {
 
   // Tracked interactions should stack.
   // To do that, create a new zone with a concatenated (cloned) array.
-  let interactions: Array<Interaction> | null = getZoneCurrentContext();
+  let interactions: Interactions | null = getZoneCurrentContext();
   if (interactions === null) {
     interactions = [interaction];
   } else {
@@ -70,7 +82,7 @@ export function addContext(name: string): void {
     return;
   }
 
-  const interactions: Array<Interaction> | null = getZoneCurrentContext();
+  const interactions: Interactions | null = getZoneCurrentContext();
   if (__DEV__) {
     invariant(
       interactions !== null && interactions.length > 0,
@@ -84,27 +96,14 @@ export function addContext(name: string): void {
     timestamp: now(),
   };
 
-  const interaction: Interaction = ((interactions: any): Array<Interaction>)[
-    ((interactions: any): Array<Interaction>).length - 1
+  const interaction: Interaction = ((interactions: any): Interactions)[
+    ((interactions: any): Interactions).length - 1
   ];
   if (interaction.children === null) {
     interaction.children = [context];
   } else {
     interaction.children.push(context);
   }
-}
-
-export function retrack(
-  interactions: Array<Interaction>,
-  callback: Function,
-): void {
-  if (!__PROFILE__) {
-    callback();
-    return;
-  }
-
-  // TODO (bvaughn) Should re-tracked events stack instead of forming a new context?
-  trackZone(interactions, callback);
 }
 
 export function wrap(callback: Function): Function {
@@ -115,7 +114,7 @@ export function wrap(callback: Function): Function {
   return wrapZone(callback);
 }
 
-export function getCurrentEvents(): Array<Interaction> | null {
+export function getCurrentEvents(): Interactions | null {
   if (!__PROFILE__) {
     return null;
   } else {
