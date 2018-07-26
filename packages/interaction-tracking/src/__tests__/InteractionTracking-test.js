@@ -186,39 +186,41 @@ describe('InteractionTracking', () => {
         });
       });
 
-      it('should support re-tracking expired events', done => {
-        let expiredInteractions;
+      describe('continuations', () => {
+        it('should always override interactions when active and restore interactions when completed', () => {
+          let oldEvents;
 
-        advanceTimeBy(2);
-        InteractionTracking.track('outer event', () => {
           advanceTimeBy(5);
-          InteractionTracking.track('inner event', () => {
-            expiredInteractions = InteractionTracking.getCurrentEvents();
+          InteractionTracking.track('old event', () => {
+            oldEvents = InteractionTracking.getCurrentEvents();
+          });
+
+          advanceTimeBy(10);
+          InteractionTracking.track('new event', () => {
+            expect(InteractionTracking.getCurrentEvents()).toEqual([
+              {children: null, name: 'new event', timestamp: 15},
+            ]);
+
+            InteractionTracking.startContinuation(oldEvents);
+            expect(InteractionTracking.getCurrentEvents()).toEqual(oldEvents);
+            InteractionTracking.stopContinuation();
+
+            expect(InteractionTracking.getCurrentEvents()).toEqual([
+              {children: null, name: 'new event', timestamp: 15},
+            ]);
           });
         });
 
-        advanceTimeBy(3);
+        it('should error if started or stopped multiple times', () => {
+          InteractionTracking.startContinuation();
+          expect(() => {
+            InteractionTracking.startContinuation();
+          }).toThrow('Cannot start a continuation when one is already active.');
 
-        InteractionTracking.track('new event', () => {
-          let interactions = InteractionTracking.getCurrentEvents();
-          expect(interactions).toEqual([
-            {children: null, name: 'new event', timestamp: 10},
-          ]);
-
-          InteractionTracking.retrack(expiredInteractions, () => {
-            interactions = InteractionTracking.getCurrentEvents();
-            expect(interactions).toEqual([
-              {children: null, name: 'outer event', timestamp: 2},
-              {children: null, name: 'inner event', timestamp: 7},
-            ]);
-          });
-
-          interactions = InteractionTracking.getCurrentEvents();
-          expect(interactions).toEqual([
-            {children: null, name: 'new event', timestamp: 10},
-          ]);
-
-          done();
+          InteractionTracking.stopContinuation();
+          expect(() => {
+            InteractionTracking.stopContinuation();
+          }).toThrow('Cannot stop a continuation when none is active.');
         });
       });
 

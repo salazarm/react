@@ -9,8 +9,11 @@
 
 // This package could be rolled into InteractionTracker if that simplifies things.
 
+import invariant from 'shared/invariant';
+
 type ZoneContext = any;
 
+let continuationContext: ZoneContext | null = null;
 let currentContext: ZoneContext | null = null;
 
 export function track(context: ZoneContext, callback: Function): void {
@@ -50,10 +53,36 @@ export function wrap(callback: Function): Function {
   };
 }
 
+export function startContinuation(context: ZoneContext): void {
+  if (!__PROFILE__) {
+    return;
+  }
+  if (__DEV__) {
+    invariant(
+      continuationContext === null,
+      'Cannot start a continuation when one is already active.',
+    );
+  }
+  continuationContext = context;
+}
+
+export function stopContinuation(): void {
+  if (!__PROFILE__) {
+    return;
+  }
+  if (__DEV__) {
+    invariant(
+      continuationContext !== null,
+      'Cannot stop a continuation when none is active.',
+    );
+  }
+  continuationContext = null;
+}
+
 export function getCurrentContext(): ZoneContext | null {
   if (!__PROFILE__) {
     return null;
   } else {
-    return currentContext;
+    return continuationContext !== null ? continuationContext : currentContext;
   }
 }
