@@ -24,7 +24,7 @@ describe('InteractionTracking', () => {
       currentTime += amount;
     };
 
-    InteractionTracking = require('interaction-tracking/src/InteractionTracking');
+    InteractionTracking = require('interaction-tracking');
   });
 
   it('should return a null name when outside of a tracked event', () => {
