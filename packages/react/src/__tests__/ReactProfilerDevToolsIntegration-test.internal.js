@@ -172,7 +172,7 @@ describe('ReactProfiler DevTools integration', () => {
     const rendered = ReactTestRenderer.create(<div />);
 
     const root = rendered.root._currentFiber().return;
-    expect(root.stateNode.committedInteractions).toBe(null);
+    expect(root.stateNode.memoizedInteractions).toBe(null);
 
     advanceTimeBy(10);
 
@@ -184,11 +184,11 @@ describe('ReactProfiler DevTools integration', () => {
     });
 
     if (__PROFILE__) {
-      expect(Array.from(root.stateNode.committedInteractions)).toEqual([
+      expect(Array.from(root.stateNode.memoizedInteractions)).toEqual([
         {children: null, name: 'some event', timestamp: eventTime},
       ]);
     } else {
-      expect(root.stateNode.committedInteractions).toBeNull();
+      expect(root.stateNode.memoizedInteractions).toBeNull();
     }
   });
 });

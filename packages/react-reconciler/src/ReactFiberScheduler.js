@@ -366,7 +366,7 @@ function resetStack() {
   nextUnitOfWork = null;
 }
 
-function commitAllHostEffects() {
+function commitAllHostEffects(root: FiberRoot) {
   while (nextEffect !== null) {
     if (__DEV__) {
       ReactCurrentFiber.setCurrentFiber(nextEffect);
@@ -411,12 +411,12 @@ function commitAllHostEffects() {
 
         // Update
         const current = nextEffect.alternate;
-        commitWork(current, nextEffect);
+        commitWork(root, current, nextEffect);
         break;
       }
       case Update: {
         const current = nextEffect.alternate;
-        commitWork(current, nextEffect);
+        commitWork(root, current, nextEffect);
         break;
       }
       case Deletion: {
@@ -557,13 +557,6 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
     );
 
     startContinuation(interactions !== null ? Array.from(interactions) : null);
-
-    // We store the committed interactions on the FiberRoot for two reasons:
-    // Firstly, this is how DevTools will access them when the onCommitRoot() hook is called.
-    // Secondly, this is how commitWork() will access them to pass them to any Profiler onRender() hooks.
-    // commitWork() can't use getInteractionsForExpirationTime() because the interactions have already been cleared.
-    // We can't wait to clear them out of the Map after commitWork() either, or we'll wipe out cascading updates.
-    finishedWork.stateNode.committedInteractions = interactions;
   }
 
   // Reset this to null before calling lifecycles
@@ -638,14 +631,14 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
     let didError = false;
     let error;
     if (__DEV__) {
-      invokeGuardedCallback(null, commitAllHostEffects, null);
+      invokeGuardedCallback(null, commitAllHostEffects, null, root);
       if (hasCaughtError()) {
         didError = true;
         error = clearCaughtError();
       }
     } else {
       try {
-        commitAllHostEffects();
+        commitAllHostEffects(root);
       } catch (e) {
         didError = true;
         error = e;
@@ -1070,17 +1063,24 @@ function renderRoot(
 
   const expirationTime = root.nextExpirationTimeToWorkOn;
 
-  let interactions = null;
   if (enableProfilerTimer) {
     // Restore any pending interactions at this point,
     // So that cascading work triggered during the render phase will be accounted for.
     // We should not clear these interactions out yet, because we'll need them again during "commit".
-    interactions = getInteractionsForExpirationTime(
+    const interactions = getInteractionsForExpirationTime(
       root,
       expirationTime,
       false,
     );
+
     startContinuation(interactions !== null ? Array.from(interactions) : null);
+
+    // We store the committed interactions on the FiberRoot for two reasons:
+    // Firstly, this is how DevTools will access them when the onCommitRoot() hook is called.
+    // Secondly, this is how commitWork() will access them to pass them to any Profiler onRender() hooks.
+    // commitWork() can't use getInteractionsForExpirationTime() because the interactions will have already been cleared.
+    // We can't wait to clear them out of the Map after commitWork() either, or we'll wipe out cascading updates.
+    root.memoizedInteractions = interactions;
   }
 
   // Check if we're starting from a fresh stack, or if we're resuming from

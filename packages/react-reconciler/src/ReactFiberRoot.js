@@ -81,7 +81,7 @@ export type FiberRoot = {
   // The following attributes are only used by profiling builds (i.e. when enableProfilerTimer is true).
   // They enable interactions to be associated with their async work,
   // And expose interaction metadata to the React DevTools Profiler plugin.
-  committedInteractions?: Interactions | null,
+  memoizedInteractions?: Interactions | null,
   pendingInteractionMap?: PendingInteractionMap,
 };
 
@@ -119,7 +119,7 @@ export function createFiberRoot(
   };
 
   if (enableProfilerTimer) {
-    ((root: any): FiberRoot).committedInteractions = null;
+    ((root: any): FiberRoot).memoizedInteractions = null;
     ((root: any): FiberRoot).pendingInteractionMap = new Map();
   }
 

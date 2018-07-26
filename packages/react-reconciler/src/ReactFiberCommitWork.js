@@ -15,7 +15,7 @@ import type {
   UpdatePayload,
 } from './ReactFiberHostConfig';
 import type {Fiber} from './ReactFiber';
-import type {FiberRoot} from './ReactFiberRoot';
+import type {FiberRoot, Interactions} from './ReactFiberRoot';
 import type {ExpirationTime} from './ReactFiberExpirationTime';
 import type {CapturedValue, CapturedError} from './ReactCapturedValue';
 
@@ -772,7 +772,11 @@ function commitDeletion(current: Fiber): void {
   detachFiber(current);
 }
 
-function commitWork(current: Fiber | null, finishedWork: Fiber): void {
+function commitWork(
+  root: FiberRoot,
+  current: Fiber | null,
+  finishedWork: Fiber,
+): void {
   if (!supportsMutation) {
     commitContainer(finishedWork);
     return;
@@ -831,15 +835,10 @@ function commitWork(current: Fiber | null, finishedWork: Fiber): void {
       if (enableProfilerTimer) {
         const onRender = finishedWork.memoizedProps.onRender;
 
-        let root = finishedWork;
-        while (root.return !== null) {
-          root = root.return;
-        }
-
         // Find the interactions that are being committed in this batch.
         // We retrieve these from the root,
         // Because they've already been cleared out of the pending interactions Map.
-        const interactions = root.stateNode.committedInteractions;
+        const interactions = ((root.memoizedInteractions: any): Interactions | null);
 
         onRender(
           finishedWork.memoizedProps.id,
