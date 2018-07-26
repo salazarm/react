@@ -556,7 +556,7 @@ function commitRoot(root: FiberRoot, finishedWork: Fiber): void {
       true,
     );
 
-    startContinuation(interactions !== null ? Array.from(interactions) : []);
+    startContinuation(interactions !== null ? Array.from(interactions) : null);
 
     // We store the committed interactions on the FiberRoot for two reasons:
     // Firstly, this is how DevTools will access them when the onCommitRoot() hook is called.
@@ -1080,7 +1080,7 @@ function renderRoot(
       expirationTime,
       false,
     );
-    startContinuation(interactions !== null ? Array.from(interactions) : []);
+    startContinuation(interactions !== null ? Array.from(interactions) : null);
   }
 
   // Check if we're starting from a fresh stack, or if we're resuming from
