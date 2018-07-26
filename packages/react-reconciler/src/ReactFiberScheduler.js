@@ -1078,7 +1078,8 @@ function renderRoot(
     // We store the committed interactions on the FiberRoot for two reasons:
     // Firstly, this is how DevTools will access them when the onCommitRoot() hook is called.
     // Secondly, this is how commitWork() will access them to pass them to any Profiler onRender() hooks.
-    // commitWork() can't use getInteractionsForExpirationTime() because the interactions will have already been cleared.
+    // commitWork() can't use getInteractionsForExpirationTime(),
+    // Because the interactions will have already been cleared.
     // We can't wait to clear them out of the Map after commitWork() either, or we'll wipe out cascading updates.
     root.memoizedInteractions = interactions;
   }
