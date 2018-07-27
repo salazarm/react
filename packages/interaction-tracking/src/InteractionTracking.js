@@ -7,12 +7,13 @@
  * @flow
  */
 
-import {
-  completeContext,
-  getCurrentContext,
-  restoreContext,
-  trackContext,
-  wrapForCurrentContext,
+import {getCurrentContext, trackContext} from './InteractionZone';
+
+export {
+  getCurrentContext as getCurrentEvents,
+  restoreContext as startContinuation,
+  completeContext as stopContinuation,
+  wrapForCurrentContext as wrap,
 } from './InteractionZone';
 
 // TODO This package will likely want to override browser APIs (e.g. setTimeout, fetch)
@@ -42,24 +43,6 @@ if (typeof performance === 'object' && typeof performance.now === 'function') {
   };
 }
 
-export function getCurrentEvents(): Interactions | null {
-  if (!__PROFILE__) {
-    return null;
-  } else {
-    return getCurrentContext();
-  }
-}
-
-export function startContinuation(
-  interactions: Interactions | null,
-): Interactions | null {
-  return restoreContext(interactions);
-}
-
-export function stopContinuation(interactions: Interactions | null): void {
-  completeContext(interactions);
-}
-
 export function track(name: string, callback: Function): void {
   if (!__PROFILE__) {
     callback();
@@ -81,12 +64,4 @@ export function track(name: string, callback: Function): void {
   }
 
   trackContext(interactions, callback);
-}
-
-export function wrap(callback: Function): Function {
-  if (!__PROFILE__) {
-    return callback;
-  }
-
-  return wrapForCurrentContext(callback);
 }
