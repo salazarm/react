@@ -7,14 +7,12 @@
  * @flow
  */
 
-import invariant from 'shared/invariant';
-
 import {
-  getCurrentContext as getZoneCurrentContext,
-  startContinuation as startZoneContinuation,
-  stopContinuation as stopZoneContinuation,
-  track as trackZone,
-  wrap as wrapZone,
+  completeContext,
+  getCurrentContext,
+  restoreContext,
+  trackContext,
+  wrapForCurrentContext,
 } from './InteractionZone';
 
 // TODO This package will likely want to override browser APIs (e.g. setTimeout, fetch)
@@ -24,7 +22,6 @@ import {
 type Interactions = Array<Interaction>;
 
 export type Interaction = {|
-  children: Interactions | null,
   name: string,
   timestamp: number,
 |};
@@ -45,12 +42,22 @@ if (typeof performance === 'object' && typeof performance.now === 'function') {
   };
 }
 
-export function startContinuation(interactions: Interactions | null): void {
-  startZoneContinuation(interactions);
+export function getCurrentEvents(): Interactions | null {
+  if (!__PROFILE__) {
+    return null;
+  } else {
+    return getCurrentContext();
+  }
 }
 
-export function stopContinuation(): void {
-  stopZoneContinuation();
+export function startContinuation(
+  interactions: Interactions | null,
+): Interactions | null {
+  return restoreContext(interactions);
+}
+
+export function stopContinuation(interactions: Interactions | null): void {
+  completeContext(interactions);
 }
 
 export function track(name: string, callback: Function): void {
@@ -60,48 +67,20 @@ export function track(name: string, callback: Function): void {
   }
 
   const interaction: Interaction = {
-    children: null,
     name,
     timestamp: now(),
   };
 
   // Tracked interactions should stack.
   // To do that, create a new zone with a concatenated (cloned) array.
-  let interactions: Interactions | null = getZoneCurrentContext();
+  let interactions: Interactions | null = getCurrentContext();
   if (interactions === null) {
     interactions = [interaction];
   } else {
     interactions = interactions.concat(interaction);
   }
 
-  trackZone(interactions, callback);
-}
-
-export function addContext(name: string): void {
-  if (!__PROFILE__) {
-    return;
-  }
-
-  const interactions: Interactions | null = getZoneCurrentContext();
-  invariant(
-    interactions !== null && interactions.length > 0,
-    'Context cannot be added outside of a tracked event.',
-  );
-
-  const context: Interaction = {
-    children: null,
-    name,
-    timestamp: now(),
-  };
-
-  const interaction: Interaction = ((interactions: any): Interactions)[
-    ((interactions: any): Interactions).length - 1
-  ];
-  if (interaction.children === null) {
-    interaction.children = [context];
-  } else {
-    interaction.children.push(context);
-  }
+  trackContext(interactions, callback);
 }
 
 export function wrap(callback: Function): Function {
@@ -109,13 +88,5 @@ export function wrap(callback: Function): Function {
     return callback;
   }
 
-  return wrapZone(callback);
-}
-
-export function getCurrentEvents(): Interactions | null {
-  if (!__PROFILE__) {
-    return null;
-  } else {
-    return getZoneCurrentContext();
-  }
+  return wrapForCurrentContext(callback);
 }

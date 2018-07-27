@@ -7,81 +7,54 @@
  * @flow
  */
 
-// This package could be rolled into InteractionTracker if that simplifies things.
-
-import invariant from 'shared/invariant';
-
 type ZoneContext = any;
 
-let continuationContext: ZoneContext | null = null;
 let currentContext: ZoneContext | null = null;
-let isInContinuation: boolean = false;
-
-export function track(context: ZoneContext, callback: Function): void {
-  if (!__PROFILE__) {
-    callback();
-    return;
-  }
-
-  const prevContext = currentContext;
-  currentContext = context;
-  try {
-    callback();
-  } finally {
-    currentContext = prevContext;
-  }
-}
-
-export function wrap(callback: Function): Function {
-  if (!__PROFILE__) {
-    return callback;
-  }
-
-  const wrappedContext = getCurrentContext();
-
-  if (wrappedContext === null) {
-    return callback;
-  }
-
-  return (...args) => {
-    const prevContext = currentContext;
-    currentContext = wrappedContext;
-    try {
-      callback(...args);
-    } finally {
-      currentContext = prevContext;
-    }
-  };
-}
-
-export function startContinuation(context: ZoneContext | null): void {
-  if (!__PROFILE__) {
-    return;
-  }
-  invariant(
-    !isInContinuation,
-    'Cannot start a continuation when one is already active.',
-  );
-  continuationContext = context;
-  isInContinuation = true;
-}
-
-export function stopContinuation(): void {
-  if (!__PROFILE__) {
-    return;
-  }
-  invariant(
-    isInContinuation,
-    'Cannot stop a continuation when none is active.',
-  );
-  continuationContext = null;
-  isInContinuation = false;
-}
 
 export function getCurrentContext(): ZoneContext | null {
   if (!__PROFILE__) {
     return null;
   } else {
-    return isInContinuation ? continuationContext : currentContext;
+    return currentContext;
   }
+}
+
+export function trackContext(context: ZoneContext, callback: Function): void {
+  if (!__PROFILE__) {
+    callback();
+    return;
+  }
+
+  let prevContext;
+  try {
+    prevContext = restoreContext(context);
+    callback();
+  } finally {
+    completeContext(prevContext);
+  }
+}
+
+export function wrapForCurrentContext(callback: Function): Function {
+  const wrappedContext = currentContext;
+  return (...args) => {
+    trackContext(wrappedContext, () => callback(...args));
+  };
+}
+
+export function restoreContext(
+  context: ZoneContext | null,
+): ZoneContext | null {
+  if (!__PROFILE__) {
+    return;
+  }
+  const prevContext = currentContext;
+  currentContext = context;
+  return prevContext;
+}
+
+export function completeContext(context: ZoneContext | null): void {
+  if (!__PROFILE__) {
+    return;
+  }
+  currentContext = context;
 }
