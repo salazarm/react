@@ -10,24 +10,43 @@
 // This package could be rolled into InteractionTracker if that simplifies things.
 
 import invariant from 'shared/invariant';
+import {
+  __onWrappedContextScheduled,
+  __onWrappedContextStarted,
+  __onWrappedContextEnded,
+} from './InteractionContextEmitter';
 
-type ZoneContext = any;
+export type ZoneContext = {
+  contextName: string,
+  contextID: number,
+};
+export type ExecutionID = number;
 
 let continuationContext: ZoneContext | null = null;
 let currentContext: ZoneContext | null = null;
 let isInContinuation: boolean = false;
+let executionID: ExecutionID = 0;
+let idCounter: number = 0;
 
-export function track(context: ZoneContext, callback: Function): void {
+export function track(contextName: string, callback: Function): void {
   if (!__PROFILE__) {
     callback();
     return;
   }
 
+  const context = {
+    name: contextName,
+    contextID: idCounter++,
+  };
+
   const prevContext = currentContext;
   currentContext = context;
   try {
+    __onWrappedContextScheduled(currentContext, ++executionID);
+    __onWrappedContextStarted(currentContext, executionID);
     callback();
   } finally {
+    __onWrappedContextEnded(currentContext, executionID);
     currentContext = prevContext;
   }
 }
@@ -42,13 +61,18 @@ export function wrap(callback: Function): Function {
   }
 
   const wrappedContext = currentContext;
+  const id = ++executionID;
+
+  __onWrappedContextScheduled(wrappedContext, id);
 
   return (...args) => {
     const prevContext = currentContext;
     currentContext = wrappedContext;
     try {
+      __onWrappedContextStarted(currentContext, id)
       callback(...args);
     } finally {
+      __onWrappedContextEnded(currentContext, id);
       currentContext = prevContext;
     }
   };
@@ -85,3 +109,5 @@ export function getCurrentContext(): ZoneContext | null {
     return isInContinuation ? continuationContext : currentContext;
   }
 }
+
+export function
