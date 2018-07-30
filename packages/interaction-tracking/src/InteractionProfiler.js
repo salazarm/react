@@ -73,4 +73,5 @@ function logInteraction(contex: ZoneContext) {
   const data = interactionData[context.contextID];
   delete interactionData[contextID];
   // Send this data to a server.
+  // logToServer(context.name, data)
 }
