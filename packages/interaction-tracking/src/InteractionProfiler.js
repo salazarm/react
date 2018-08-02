@@ -36,7 +36,7 @@ const prevExecutionIDs = {};
 let currentExecutionID = null;
 
 registerInteractionContextObserver({
-  onContextScheduled(contexts: Array<Interaction>, executionID: ExecutionID) {
+  onContextScheduled(contexts: Array<Interaction>, executionID: number) {
     if (!contexts.length) {
       return;
     }
@@ -45,7 +45,7 @@ registerInteractionContextObserver({
       scheduled: performance.now(),
       start: 0,
       end: 0,
-      id: executionID,
+      id: number,
       parentID: currentExecutionID,
     };
     contexts.forEach((context) => {
@@ -64,7 +64,7 @@ registerInteractionContextObserver({
     });
   },
 
-  onContextStarting(contexts: Array<Interaction>, executionID: ExecutionID): void {
+  onContextStarting(contexts: Array<Interaction>, executionID: number): void {
     if (!contexts.length) {
       return;
     }
@@ -78,7 +78,7 @@ registerInteractionContextObserver({
     currentExecutionID = executionID;
   },
 
-  onContextEnded(contexts: Array<Interaction>, executionID: ExecutionID): void {
+  onContextEnded(contexts: Array<Interaction>, executionID: number): void {
     if (!contexts.length) {
       return;
     }

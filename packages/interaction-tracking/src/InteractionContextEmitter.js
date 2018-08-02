@@ -7,20 +7,20 @@
  * @flow
  */
 
- import type {ExecutionID, ZoneContext} from './InteractionZone';
+ import type {Interaction} from './InteractionTracking';
 
  export type InteractionContextObserver = {
    onContextScheduled: (
-     contexts: Array<ZoneContext>,
-     executionID: ExecutionID,
+     contexts: $ReadOnly<Array<$ReadOnly<Interaction>>>,
+     executionID: number,
    ) => void;
    onContextStarting: (
-     contexts: Array<ZoneContext>,
-     executionID: ExecutionID,
+     contexts: $ReadOnly<Array<$ReadOnly<Interaction>>>,
+     executionID: number,
    ) => void;
    onContextEnded: (
-     contexts: Array<ZoneContext>,
-     executionID: ExecutionID,
+     contexts: $ReadOnly<Array<$ReadOnly<Interaction>>>,
+     executionID: number,
    ) => void;
  }
 
@@ -33,7 +33,7 @@ export function registerInteractionContextObserver(
 }
 
 export function __onWrappedContextScheduled(
-  contexts: Array<ZoneContext>,
+  contexts: $ReadOnly<Array<$ReadOnly<Interaction>>>,
   executionID: number,
 ): void {
   if (!observers.length) {
@@ -45,7 +45,7 @@ export function __onWrappedContextScheduled(
 }
 
 export function __onWrappedContextStarting(
-  contexts: Array<ZoneContext>,
+  contexts: $ReadOnly<Array<$ReadOnly<Interaction>>>,
   executionID: number,
 ) {
   if (!observers.length) {
@@ -57,7 +57,7 @@ export function __onWrappedContextStarting(
 }
 
 export function __onWrappedContextEnded(
-  contexts: Array<ZoneContext>,
+  contexts: $ReadOnly<Array<$ReadOnly<Interaction>>>,
   executionID: number,
 ) {
   if (!observers.length) {
