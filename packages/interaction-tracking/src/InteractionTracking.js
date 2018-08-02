@@ -11,11 +11,16 @@ import invariant from 'shared/invariant';
 
 import {
   getCurrentContext as getZoneCurrentContext,
+  getSettableContext as getZoneSettableContext,
   startContinuation as startZoneContinuation,
   stopContinuation as stopZoneContinuation,
   track as trackZone,
   wrap as wrapZone,
 } from './InteractionZone';
+
+import {
+  registerInteractionContextObserver as registerZoneContextObserver,
+} from './InteractionContextEmitter';
 
 // TODO This package will likely want to override browser APIs (e.g. setTimeout, fetch)
 // So that async callbacks are automatically wrapped with the current tracked event info.
@@ -25,6 +30,7 @@ type Interactions = Array<Interaction>;
 
 export type Interaction = {|
   children: Interactions | null,
+  id: number,
   name: string,
   timestamp: number,
 |};
@@ -45,8 +51,10 @@ if (typeof performance === 'object' && typeof performance.now === 'function') {
   };
 }
 
-export function startContinuation(interactions: Interactions | null): void {
-  startZoneContinuation(interactions);
+let contextIDDispenser: number = 0;
+
+export function startContinuation(context: SettableContext | null): void {
+  startZoneContinuation(context);
 }
 
 export function stopContinuation(): void {
@@ -59,22 +67,23 @@ export function track(name: string, callback: Function): void {
     return;
   }
 
-  const interaction: Interaction = {
+  const context = {
+    id: contextIDDispenser++,
+    name: name,
     children: null,
-    name,
     timestamp: now(),
   };
 
   // Tracked interactions should stack.
   // To do that, create a new zone with a concatenated (cloned) array.
-  let interactions: Interactions | null = getZoneCurrentContext();
-  if (interactions === null) {
-    interactions = [interaction];
+  let contexts = getZoneCurrentContext();
+  if (contexts === null) {
+    contexts = [context];
   } else {
-    interactions = interactions.concat(interaction);
+    contexts = contexts.concat(context);
   }
 
-  trackZone(interactions, callback);
+  trackZone(contexts, callback);
 }
 
 export function addContext(name: string): void {
@@ -118,4 +127,21 @@ export function getCurrentEvents(): Interactions | null {
   } else {
     return getZoneCurrentContext();
   }
+}
+
+/*
+ * Use this function to receive a context compatable with
+ * startContinuation and stopContinuation. The context should be used with
+ * startContinuation exactly once.
+ */
+export function getSettableContext(): SettableContext | null {
+  if (!__PROFILE__) {
+    return null;
+  } else {
+    return getZoneSettableContext();
+  }
+}
+
+export function registerInteractionContextObserver(observer) {
+  registerZoneContextObserver(observer);
 }

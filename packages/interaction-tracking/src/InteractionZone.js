@@ -12,41 +12,42 @@
 import invariant from 'shared/invariant';
 import {
   __onWrappedContextScheduled,
-  __onWrappedContextStarted,
+  __onWrappedContextStarting,
   __onWrappedContextEnded,
 } from './InteractionContextEmitter';
 
 export type ZoneContext = {
-  contextName: string,
-  contextID: number,
+  children: Array<any>,
+  id: number,
+  name: string,
+  timestamp: number,
 };
-export type ExecutionID = number;
 
-let continuationContext: ZoneContext | null = null;
-let currentContext: ZoneContext | null = null;
+export type SettableZoneContext = {
+  __context: Array<ZoneContext>,
+  __id: number,
+}
+
+let continuationContext: SettableZoneContext | null = null;
+let currentContext: Array<ZoneContext> | null = null;
 let isInContinuation: boolean = false;
-let executionID: ExecutionID = 0;
-let idCounter: number = 0;
+let executionID: number = -1;
 
-export function track(contextName: string, callback: Function): void {
+export function track(context: Array<ZoneContext>, callback: Function): void {
   if (!__PROFILE__) {
     callback();
     return;
   }
 
-  const context = {
-    name: contextName,
-    contextID: idCounter++,
-  };
-
   const prevContext = currentContext;
   currentContext = context;
+  const id = ++executionID;
   try {
-    __onWrappedContextScheduled(currentContext, ++executionID);
-    __onWrappedContextStarted(currentContext, executionID);
+    __onWrappedContextScheduled(currentContext, id);
+    __onWrappedContextStarting(currentContext, id);
     callback();
   } finally {
-    __onWrappedContextEnded(currentContext, executionID);
+    __onWrappedContextEnded(currentContext, id);
     currentContext = prevContext;
   }
 }
@@ -69,7 +70,7 @@ export function wrap(callback: Function): Function {
     const prevContext = currentContext;
     currentContext = wrappedContext;
     try {
-      __onWrappedContextStarted(currentContext, id)
+      __onWrappedContextStarting(currentContext, id);
       callback(...args);
     } finally {
       __onWrappedContextEnded(currentContext, id);
@@ -78,7 +79,25 @@ export function wrap(callback: Function): Function {
   };
 }
 
-export function startContinuation(context: ZoneContext | null): void {
+/**
+ * If you call this function then you are promising to call startContinuation
+ * with the returned SettableZoneContext exactly once.
+ */
+export function getSettableContext(): SettableZoneContext | null {
+  if (!__PROFILE__) {
+    return null;
+  }
+  const context = isInContinuation ? continuationContext : currentContext;
+  const id = ++executionID;
+  __onWrappedContextScheduled(context, id);
+  return ({
+    __context: context,
+    __id: id,
+    __startCount: 0,
+  });
+}
+
+export function startContinuation(context: SettableZoneContext): void {
   if (!__PROFILE__) {
     return;
   }
@@ -88,6 +107,12 @@ export function startContinuation(context: ZoneContext | null): void {
   );
   continuationContext = context;
   isInContinuation = true;
+  invariant(
+    context.__startCount === 0,
+    'Cannot start a SettableContext more than once',
+  );
+  context.__startCount++;
+  __onWrappedContextStarting(context.__context, context.__id);
 }
 
 export function stopContinuation(): void {
@@ -98,9 +123,14 @@ export function stopContinuation(): void {
     isInContinuation,
     'Cannot stop a continuation when none is active.',
   );
+  __onWrappedContextEnded(
+    continuationContext.__context,
+    continuationContext.__id
+  );
   continuationContext = null;
   isInContinuation = false;
 }
+
 
 export function getCurrentContext(): ZoneContext | null {
   if (!__PROFILE__) {

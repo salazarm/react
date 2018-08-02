@@ -7,10 +7,9 @@
  * @flow
  */
 
- import type {InteractionContextObserver} from './InteractionContextEmitter';
- import type {ExecutionID, ZoneContext} from './InteractionZone';
+ import type {Interaction} from './InteractionTracking';
 
- import {registerInteractionContextObserver} from './InteractionContextEmitter';
+ import {registerInteractionContextObserver} from './InteractionTracking';
 
 if (!__PROFILE__) {
   return;
@@ -18,60 +17,83 @@ if (!__PROFILE__) {
 
 type Block = {
   creationStack: string,
-  creation: number,
+  scheduled: number,
   start: number,
   end: number,
   id: number,
-  parentID: number,
+  parentID: ?number,
 }
 
 // InteractionData keyed by ContextID
 const interactionData: {[key: number]: {
   // Blocks keyed by BlockID (Execution ID)
   blocks: {[key: number]: Block},
-}} = {}
+}} = {};
 
-const seenContexts = {}
+const seenContexts = {};
+const prevExecutionIDs = {};
+
+let currentExecutionID = null;
 
 registerInteractionContextObserver({
-  onContextScheduled(context: ZoneContext, executionID: ExecutionID) {
-    const contextID = context.contextID:
-    if (!seenContexts[contextID]) {
-      seenContexts[contextID] = true;
-      interactionData[contextID] = {blocks: {}};
-      // Log this interaction after 60 seconds.
-      setTimeout(() => logInteraction(context), 60000);
-    }
-    if (!interactionData[contextID]) {
-      // Already logged this interaction.
+  onContextScheduled(contexts: Array<Interaction>, executionID: ExecutionID) {
+    if (!contexts.length) {
       return;
     }
-    interactionData[contextID].blocks[executionID] = {
+    const block = {
       creationStack: new Error().stack,
-      creation: performance.now(),
+      scheduled: performance.now(),
       start: 0,
       end: 0,
       id: executionID,
       parentID: currentExecutionID,
-    }
+    };
+    contexts.forEach((context) => {
+      const contextID = context.id;
+      if (!seenContexts[contextID]) {
+        seenContexts[contextID] = true;
+        interactionData[contextID] = {blocks: {}};
+        // Log this interaction after 60 seconds.
+        setTimeout(() => logInteraction(context), 60000);
+      }
+      if (!interactionData[contextID]) {
+        // Already logged this interaction.
+        return;
+      }
+      interactionData[contextID].blocks[executionID] = block;
+    });
   },
 
-  onContextStarted(context: ZoneContext, executionID: ExecutionID) {
-    if (interactionData[context.contextID]) {
-      interactionData[context.contextID].blocks[executionID].start =
-        performance.now();
+  onContextStarting(contexts: Array<Interaction>, executionID: ExecutionID): void {
+    if (!contexts.length) {
+      return;
     }
+    const start = performance.now();
+    contexts.forEach((context) => {
+      if (interactionData[context.id]) {
+        interactionData[context.id].blocks[executionID].start = start;
+      }
+    });
+    prevExecutionIDs[executionID] = currentExecutionID;
+    currentExecutionID = executionID;
   },
 
-  onContextEnded(context: ZoneContext, executionID: ExecutionID) {
-    interactionData[context.contextID].blocks[executionID].end =
-      performance.now();
+  onContextEnded(contexts: Array<Interaction>, executionID: ExecutionID): void {
+    if (!contexts.length) {
+      return;
+    }
+    const end = performance.now();
+    contexts.forEach((context) => {
+      interactionData[context.id].blocks[executionID].end = end;
+    });
+    currentExecutionID = prevExecutionIDs[executionID];
+    delete prevExecutionIDs[executionID];
   },
 });
 
-function logInteraction(contex: ZoneContext) {
-  const data = interactionData[context.contextID];
-  delete interactionData[contextID];
+function logInteraction(context: Interaction) {
+  const data = interactionData[context.id];
+  delete interactionData[context.id];
   // Send this data to a server.
   // logToServer(context.name, data)
 }

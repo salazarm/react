@@ -9,22 +9,22 @@
 
  import type {ExecutionID, ZoneContext} from './InteractionZone';
 
- export type InteractionContextObserver {
+ export type InteractionContextObserver = {
    onContextScheduled: (
-     context: ZoneContext,
+     contexts: Array<ZoneContext>,
      executionID: ExecutionID,
    ) => void;
-   onContextStarted: (
-     context: ZoneContext,
+   onContextStarting: (
+     contexts: Array<ZoneContext>,
      executionID: ExecutionID,
    ) => void;
    onContextEnded: (
-     context: ZoneContext,
+     contexts: Array<ZoneContext>,
      executionID: ExecutionID,
    ) => void;
  }
 
- const observers: Array<InteractionContextObserver> = []
+const observers: Array<InteractionContextObserver> = [];
 
 export function registerInteractionContextObserver(
   observer: InteractionContextObserver,
@@ -33,30 +33,37 @@ export function registerInteractionContextObserver(
 }
 
 export function __onWrappedContextScheduled(
-  context:
+  contexts: Array<ZoneContext>,
+  executionID: number,
 ): void {
   if (!observers.length) {
     return;
   }
   observers.forEach(observer => {
-    observer.onContextScheduled()
+    observer.onContextScheduled(contexts, executionID);
   });
 }
 
-export function __onWrappedContextStarted() {
+export function __onWrappedContextStarting(
+  contexts: Array<ZoneContext>,
+  executionID: number,
+) {
   if (!observers.length) {
     return;
   }
   observers.forEach(observer => {
-    observer.onContextStarted();
+    observer.onContextStarting(contexts, executionID);
   });
 }
 
-export function __onWrappedContextEnded() {
+export function __onWrappedContextEnded(
+  contexts: Array<ZoneContext>,
+  executionID: number,
+) {
   if (!observers.length) {
     return;
   }
   observers.forEach(observer => {
-    observer.onContextEnded();
+    observer.onContextEnded(contexts, executionID);
   });
 }
