@@ -62,7 +62,7 @@ import {
 } from './ReactChildFiber';
 import {processUpdateQueue} from './ReactUpdateQueue';
 import {NoWork, Never} from './ReactFiberExpirationTime';
-import {AsyncMode, ProfileMode, StrictMode} from './ReactTypeOfMode';
+import {AsyncMode, StrictMode} from './ReactTypeOfMode';
 import {
   shouldSetTextContent,
   shouldDeprioritizeSubtree,
@@ -73,11 +73,9 @@ import {
   propagateContextChange,
   readContext,
   prepareToReadContext,
+  calculateChangedBits,
 } from './ReactFiberNewContext';
-import {
-  markActualRenderTimeStarted,
-  stopBaseRenderTimerIfRunning,
-} from './ReactProfilerTimer';
+import {stopProfilerTimerIfRunning} from './ReactProfilerTimer';
 import {
   getMaskedContext,
   getUnmaskedContext,
@@ -145,7 +143,11 @@ export function reconcileChildren(
   }
 }
 
-function updateForwardRef(current, workInProgress, renderExpirationTime) {
+function updateForwardRef(
+  current: Fiber | null,
+  workInProgress: Fiber,
+  renderExpirationTime: ExpirationTime,
+) {
   const render = workInProgress.type.render;
   const nextProps = workInProgress.pendingProps;
   const ref = workInProgress.ref;
@@ -183,7 +185,11 @@ function updateForwardRef(current, workInProgress, renderExpirationTime) {
   return workInProgress.child;
 }
 
-function updateFragment(current, workInProgress, renderExpirationTime) {
+function updateFragment(
+  current: Fiber | null,
+  workInProgress: Fiber,
+  renderExpirationTime: ExpirationTime,
+) {
   const nextChildren = workInProgress.pendingProps;
   reconcileChildren(
     current,
@@ -195,7 +201,11 @@ function updateFragment(current, workInProgress, renderExpirationTime) {
   return workInProgress.child;
 }
 
-function updateMode(current, workInProgress, renderExpirationTime) {
+function updateMode(
+  current: Fiber | null,
+  workInProgress: Fiber,
+  renderExpirationTime: ExpirationTime,
+) {
   const nextChildren = workInProgress.pendingProps.children;
   reconcileChildren(
     current,
@@ -207,7 +217,11 @@ function updateMode(current, workInProgress, renderExpirationTime) {
   return workInProgress.child;
 }
 
-function updateProfiler(current, workInProgress, renderExpirationTime) {
+function updateProfiler(
+  current: Fiber | null,
+  workInProgress: Fiber,
+  renderExpirationTime: ExpirationTime,
+) {
   if (enableProfilerTimer) {
     workInProgress.effectTag |= Update;
   }
@@ -362,7 +376,7 @@ function finishClassComponent(
     nextChildren = null;
 
     if (enableProfilerTimer) {
-      stopBaseRenderTimerIfRunning();
+      stopProfilerTimerIfRunning(workInProgress);
     }
   } else {
     if (__DEV__) {
@@ -618,6 +632,11 @@ function mountIndeterminateComponent(
     // Proceed under the assumption that this is a class instance
     workInProgress.tag = ClassComponent;
 
+    // Push context providers early to prevent context stack mismatches.
+    // During mounting we don't know the child context yet as the instance doesn't exist.
+    // We will invalidate the child context in finishClassComponent() right after rendering.
+    const hasContext = pushLegacyContextProvider(workInProgress);
+
     workInProgress.memoizedState =
       value.state !== null && value.state !== undefined ? value.state : null;
 
@@ -630,10 +649,6 @@ function mountIndeterminateComponent(
       );
     }
 
-    // Push context providers early to prevent context stack mismatches.
-    // During mounting we don't know the child context yet as the instance doesn't exist.
-    // We will invalidate the child context in finishClassComponent() right after rendering.
-    const hasContext = pushLegacyContextProvider(workInProgress);
     adoptClassInstance(workInProgress, value);
     mountClassInstance(workInProgress, renderExpirationTime);
     return finishClassComponent(
@@ -766,7 +781,11 @@ function updatePlaceholderComponent(
   }
 }
 
-function updatePortalComponent(current, workInProgress, renderExpirationTime) {
+function updatePortalComponent(
+  current: Fiber | null,
+  workInProgress: Fiber,
+  renderExpirationTime: ExpirationTime,
+) {
   pushHostContainer(workInProgress, workInProgress.stateNode.containerInfo);
   const nextChildren = workInProgress.pendingProps;
   if (current === null) {
@@ -794,7 +813,11 @@ function updatePortalComponent(current, workInProgress, renderExpirationTime) {
   return workInProgress.child;
 }
 
-function updateContextProvider(current, workInProgress, renderExpirationTime) {
+function updateContextProvider(
+  current: Fiber | null,
+  workInProgress: Fiber,
+  renderExpirationTime: ExpirationTime,
+) {
   const providerType: ReactProviderType<any> = workInProgress.type;
   const context: ReactContext<any> = providerType._context;
 
@@ -823,95 +846,45 @@ function updateContextProvider(current, workInProgress, renderExpirationTime) {
     // Initial render
     changedBits = MAX_SIGNED_31_BIT_INT;
   } else {
-    if (oldProps.value === newProps.value) {
+    const oldValue = oldProps.value;
+    changedBits = calculateChangedBits(context, newValue, oldValue);
+    if (changedBits === 0) {
       // No change. Bailout early if children are the same.
       if (
         oldProps.children === newProps.children &&
         !hasLegacyContextChanged()
       ) {
-        workInProgress.stateNode = 0;
-        pushProvider(workInProgress);
+        pushProvider(workInProgress, 0);
         return bailoutOnAlreadyFinishedWork(
           current,
           workInProgress,
           renderExpirationTime,
         );
       }
-      changedBits = 0;
     } else {
-      const oldValue = oldProps.value;
-      // Use Object.is to compare the new context value to the old value.
-      // Inlined Object.is polyfill.
-      // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/is
-      if (
-        (oldValue === newValue &&
-          (oldValue !== 0 || 1 / oldValue === 1 / newValue)) ||
-        (oldValue !== oldValue && newValue !== newValue) // eslint-disable-line no-self-compare
-      ) {
-        // No change. Bailout early if children are the same.
-        if (
-          oldProps.children === newProps.children &&
-          !hasLegacyContextChanged()
-        ) {
-          workInProgress.stateNode = 0;
-          pushProvider(workInProgress);
-          return bailoutOnAlreadyFinishedWork(
-            current,
-            workInProgress,
-            renderExpirationTime,
-          );
-        }
-        changedBits = 0;
-      } else {
-        changedBits =
-          typeof context._calculateChangedBits === 'function'
-            ? context._calculateChangedBits(oldValue, newValue)
-            : MAX_SIGNED_31_BIT_INT;
-        if (__DEV__) {
-          warning(
-            (changedBits & MAX_SIGNED_31_BIT_INT) === changedBits,
-            'calculateChangedBits: Expected the return value to be a ' +
-              '31-bit integer. Instead received: %s',
-            changedBits,
-          );
-        }
-        changedBits |= 0;
-
-        if (changedBits === 0) {
-          // No change. Bailout early if children are the same.
-          if (
-            oldProps.children === newProps.children &&
-            !hasLegacyContextChanged()
-          ) {
-            workInProgress.stateNode = 0;
-            pushProvider(workInProgress);
-            return bailoutOnAlreadyFinishedWork(
-              current,
-              workInProgress,
-              renderExpirationTime,
-            );
-          }
-        } else {
-          propagateContextChange(
-            workInProgress,
-            context,
-            changedBits,
-            renderExpirationTime,
-          );
-        }
-      }
+      // The context value changed. Search for matching consumers and schedule
+      // them to update.
+      propagateContextChange(
+        workInProgress,
+        context,
+        changedBits,
+        renderExpirationTime,
+      );
     }
   }
 
-  workInProgress.stateNode = changedBits;
-  pushProvider(workInProgress);
+  pushProvider(workInProgress, changedBits);
 
   const newChildren = newProps.children;
   reconcileChildren(current, workInProgress, newChildren, renderExpirationTime);
   return workInProgress.child;
 }
 
-function updateContextConsumer(current, workInProgress, renderExpirationTime) {
+function updateContextConsumer(
+  current: Fiber | null,
+  workInProgress: Fiber,
+  renderExpirationTime: ExpirationTime,
+) {
   const context: ReactContext<any> = workInProgress.type;
   const newProps = workInProgress.pendingProps;
   const render = newProps.children;
@@ -978,7 +951,7 @@ function bailoutOnAlreadyFinishedWork(
 
   if (enableProfilerTimer) {
     // Don't update "base" render times for bailouts.
-    stopBaseRenderTimerIfRunning();
+    stopProfilerTimerIfRunning(workInProgress);
   }
 
   // Check if the children have any pending work.
@@ -1015,12 +988,6 @@ function beginWork(
   workInProgress: Fiber,
   renderExpirationTime: ExpirationTime,
 ): Fiber | null {
-  if (enableProfilerTimer) {
-    if (workInProgress.mode & ProfileMode) {
-      markActualRenderTimeStarted(workInProgress);
-    }
-  }
-
   const updateExpirationTime = workInProgress.expirationTime;
   if (
     !hasLegacyContextChanged() &&
@@ -1048,8 +1015,7 @@ function beginWork(
         );
         break;
       case ContextProvider:
-        workInProgress.stateNode = 0;
-        pushProvider(workInProgress);
+        pushProvider(workInProgress, 0);
         break;
       case Profiler:
         if (enableProfilerTimer) {

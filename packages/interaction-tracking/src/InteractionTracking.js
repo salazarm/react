@@ -8,32 +8,27 @@
  */
 
 import invariant from 'shared/invariant';
-
 import {
-  getCurrentContext as getZoneCurrentContext,
-  getSettableContext as getZoneSettableContext,
-  startContinuation as startZoneContinuation,
-  stopContinuation as stopZoneContinuation,
-  track as trackZone,
-  wrap as wrapZone,
-} from './InteractionZone';
+  __onInteractionsScheduled,
+  __onInteractionsStarting,
+  __onInteractionsEnded,
+} from './InteractionEmitter';
 
-import {
-  registerInteractionContextObserver as registerZoneContextObserver,
-} from './InteractionContextEmitter';
-
-// TODO This package will likely want to override browser APIs (e.g. setTimeout, fetch)
-// So that async callbacks are automatically wrapped with the current tracked event info.
-// For the initial iteration, async callbacks must be explicitely wrapped with wrap().
+export {registerInteractionObserver} from './InteractionEmitter';
 
 type Interactions = Array<Interaction>;
 
 export type Interaction = {|
-  children: Interactions | null,
   id: number,
   name: string,
   timestamp: number,
 |};
+
+export type Continuation = {
+  __hasBeenRun: boolean,
+  __id: number,
+  __interactions: Interactions,
+};
 
 // Normally we would use the current renderer HostConfig's "now" method,
 // But since interaction-tracking will be a separate package,
@@ -41,75 +36,139 @@ export type Interaction = {|
 let now;
 if (typeof performance === 'object' && typeof performance.now === 'function') {
   const localPerformance = performance;
-  now = function() {
-    return localPerformance.now();
-  };
+  now = () => localPerformance.now();
 } else {
   const localDate = Date;
-  now = function() {
-    return localDate.now();
-  };
+  now = () => localDate.now();
 }
 
-let contextIDDispenser: number = 0;
+let currentContinuation: Continuation | null = null;
+let currentInteractions: Interactions | null = null;
+let globalExecutionID: number = 0;
+let globalInteractionID: number = 0;
 
-export function startContinuation(context: SettableContext | null): void {
-  startZoneContinuation(context);
+export function getCurrent(): Interactions | null {
+  if (!__PROFILE__) {
+    return null;
+  } else {
+    return currentContinuation !== null
+      ? currentContinuation.__interactions
+      : currentInteractions;
+  }
 }
 
-export function stopContinuation(): void {
-  stopZoneContinuation();
+export function reserveContinuation(): Continuation | null {
+  if (!__PROFILE__) {
+    return null;
+  }
+
+  if (currentContinuation !== null) {
+    const executionID = globalExecutionID++;
+
+    __onInteractionsScheduled(currentContinuation.__interactions, executionID);
+
+    return {
+      __hasBeenRun: false,
+      __id: executionID,
+      __interactions: currentContinuation.__interactions,
+    };
+  } else if (currentInteractions !== null) {
+    const executionID = globalExecutionID++;
+
+    __onInteractionsScheduled(currentInteractions, executionID);
+
+    return {
+      __hasBeenRun: false,
+      __id: executionID,
+      __interactions: currentInteractions,
+    };
+  } else {
+    return null;
+  }
 }
 
+export function startContinuation(continuation: Continuation | null): void {
+  if (!__PROFILE__) {
+    return;
+  }
+
+  invariant(
+    currentContinuation === null,
+    'Cannot start a continuation when one is already active.',
+  );
+
+  if (continuation === null) {
+    return;
+  }
+
+  invariant(
+    !continuation.__hasBeenRun,
+    'A continuation can only be started once',
+  );
+
+  continuation.__hasBeenRun = true;
+  currentContinuation = continuation;
+
+  __onInteractionsStarting(continuation.__interactions, continuation.__id);
+}
+
+export function stopContinuation(continuation: Continuation): void {
+  if (!__PROFILE__) {
+    return;
+  }
+
+  invariant(
+    currentContinuation === continuation,
+    'Cannot stop a continuation that is not active.',
+  );
+
+  if (continuation === null) {
+    return;
+  }
+
+  __onInteractionsEnded(continuation.__interactions, continuation.__id);
+
+  currentContinuation = null;
+}
+
+// TODO How should track() behave if a continuation is active?
+// getCurrent() won't reflect the "tracked" value since continuations always mask interactions.
+// Should we not support calling track() when a continuation is active?
+// Should we change the way continuations work, to not mask interactions?
 export function track(name: string, callback: Function): void {
   if (!__PROFILE__) {
     callback();
     return;
   }
 
-  const context = {
-    id: contextIDDispenser++,
-    name: name,
-    children: null,
+  const interaction: Interaction = {
+    id: globalInteractionID++,
+    name,
     timestamp: now(),
   };
 
   // Tracked interactions should stack.
   // To do that, create a new zone with a concatenated (cloned) array.
-  let contexts = getZoneCurrentContext();
-  if (contexts === null) {
-    contexts = [context];
+  let interactions: Interactions | null = currentInteractions;
+  if (interactions === null) {
+    interactions = [interaction];
   } else {
-    contexts = contexts.concat(context);
+    interactions = interactions.concat(interaction);
   }
 
-  trackZone(contexts, callback);
-}
+  const executionID = globalExecutionID++;
+  const prevInteractions = currentInteractions;
+  currentInteractions = interactions;
 
-export function addContext(name: string): void {
-  if (!__PROFILE__) {
-    return;
-  }
+  try {
+    __onInteractionsScheduled(currentInteractions, executionID);
+    __onInteractionsStarting(currentInteractions, executionID);
 
-  const interactions: Interactions | null = getZoneCurrentContext();
-  invariant(
-    interactions !== null && interactions.length > 0,
-    'Context cannot be added outside of a tracked event.',
-  );
+    callback();
+  } finally {
+    __onInteractionsEnded(currentInteractions, executionID);
 
-  const context: Interaction = {
-    children: null,
-    name,
-    timestamp: now(),
-  };
-
-  const interaction: Interaction = ((interactions: any): Interactions)[
-    ((interactions: any): Interactions).length - 1
-  ];
-  if (interaction.children === null) {
-    interaction.children = [context];
-  } else {
-    interaction.children.push(context);
+    currentInteractions = prevInteractions;
   }
 }
 
@@ -118,30 +177,30 @@ export function wrap(callback: Function): Function {
     return callback;
   }
 
-  return wrapZone(callback);
-}
-
-export function getCurrentEvents(): Interactions | null {
-  if (!__PROFILE__) {
-    return null;
-  } else {
-    return getZoneCurrentContext();
+  if (currentContinuation === null && currentInteractions === null) {
+    return callback;
   }
-}
 
-/*
- * Use this function to receive a context compatable with
- * startContinuation and stopContinuation. The context should be used with
- * startContinuation exactly once.
- */
-export function getSettableContext(): SettableContext | null {
-  if (!__PROFILE__) {
-    return null;
-  } else {
-    return getZoneSettableContext();
-  }
-}
+  const executionID = globalExecutionID++;
+  const wrappedInteractions =
+    currentContinuation !== null
+      ? ((currentContinuation.__interactions: any): Interactions)
+      : ((currentInteractions: any): Interactions);
 
-export function registerInteractionContextObserver(observer) {
-  registerZoneContextObserver(observer);
+  __onInteractionsScheduled(wrappedInteractions, executionID);
+
+  return (...args) => {
+    const prevInteractions = currentInteractions;
+    currentInteractions = wrappedInteractions;
+
+    try {
+      __onInteractionsStarting(currentInteractions, executionID);
+
+      callback(...args);
+    } finally {
+      __onInteractionsEnded(currentInteractions, executionID);
+
+      currentInteractions = prevInteractions;
+    }
+  };
 }

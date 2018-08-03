@@ -349,6 +349,7 @@ function processContext(type, context) {
   return maskedContext;
 }
 
+const hasOwnProperty = Object.prototype.hasOwnProperty;
 const STYLE = 'style';
 const RESERVED_PROPS = {
   children: null,
@@ -368,7 +369,7 @@ function createOpenTagMarkup(
   let ret = '<' + tagVerbatim;
 
   for (const propKey in props) {
-    if (!props.hasOwnProperty(propKey)) {
+    if (!hasOwnProperty.call(props, propKey)) {
       continue;
     }
     let propValue = props[propKey];
@@ -475,10 +476,13 @@ function resolve(
             if (!didWarnAboutUninitializedState[componentName]) {
               warningWithoutStack(
                 false,
-                '%s: Did not properly initialize state during construction. ' +
-                  'Expected state to be an object, but it was %s.',
+                '`%s` uses `getDerivedStateFromProps` but its initial state is ' +
+                  '%s. This is not recommended. Instead, define the initial state by ' +
+                  'assigning an object to `this.state` in the constructor of `%s`. ' +
+                  'This ensures that `getDerivedStateFromProps` arguments have a consistent shape.',
                 componentName,
                 inst.state === null ? 'null' : 'undefined',
+                componentName,
               );
               didWarnAboutUninitializedState[componentName] = true;
             }
