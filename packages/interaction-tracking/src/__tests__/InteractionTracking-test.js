@@ -211,7 +211,49 @@ describe('InteractionTracking', () => {
           expect(callback).toHaveBeenCalled();
         });
 
-        // TODO (bvaughn) Add test that verifies behavior when track() is called from within a continuation.
+        it('should extend interactions within the current continutation when track is called', () => {
+          advanceTimeBy(2);
+
+          let continuation;
+          InteractionTracking.track('original event', () => {
+            continuation = InteractionTracking.reserveContinuation();
+          });
+
+          let innerIndirectionTracked = false;
+
+          advanceTimeBy(3);
+
+          InteractionTracking.track('outer event', () => {
+            advanceTimeBy(7);
+            InteractionTracking.startContinuation(continuation);
+            expect(InteractionTracking.getCurrent()).toEqual([
+              {id: 0, name: 'original event', timestamp: 2},
+            ]);
+
+            advanceTimeBy(21);
+            InteractionTracking.track('inner event', () => {
+              expect(InteractionTracking.getCurrent()).toEqual([
+                {id: 0, name: 'original event', timestamp: 2},
+                // "outer event" should be masked by the continuation
+                {id: 2, name: 'inner event', timestamp: 33},
+              ]);
+
+              innerIndirectionTracked = true;
+            });
+
+            expect(InteractionTracking.getCurrent()).toEqual([
+              {id: 0, name: 'original event', timestamp: 2},
+            ]);
+            InteractionTracking.stopContinuation(continuation);
+
+            expect(InteractionTracking.getCurrent()).toEqual([
+              {id: 1, name: 'outer event', timestamp: 5},
+            ]);
+          });
+
+          expect(InteractionTracking.getCurrent()).toBe(null);
+          expect(innerIndirectionTracked).toBe(true);
+        });
       });
 
       describe('error handling', () => {

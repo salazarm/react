@@ -28,6 +28,7 @@ export type Continuation = {
   __hasBeenRun: boolean,
   __id: number,
   __interactions: Interactions,
+  __prevInteractions: Interactions | null,
 };
 
 // Normally we would use the current renderer HostConfig's "now" method,
@@ -43,17 +44,15 @@ if (typeof performance === 'object' && typeof performance.now === 'function') {
 }
 
 let currentContinuation: Continuation | null = null;
-let currentInteractions: Interactions | null = null;
 let globalExecutionID: number = 0;
 let globalInteractionID: number = 0;
+let interactions: Interactions | null = null;
 
 export function getCurrent(): Interactions | null {
   if (!__PROFILE__) {
     return null;
   } else {
-    return currentContinuation !== null
-      ? currentContinuation.__interactions
-      : currentInteractions;
+    return interactions;
   }
 }
 
@@ -62,25 +61,16 @@ export function reserveContinuation(): Continuation | null {
     return null;
   }
 
-  if (currentContinuation !== null) {
+  if (interactions !== null) {
     const executionID = globalExecutionID++;
 
-    __onInteractionsScheduled(currentContinuation.__interactions, executionID);
+    __onInteractionsScheduled(interactions, executionID);
 
     return {
       __hasBeenRun: false,
       __id: executionID,
-      __interactions: currentContinuation.__interactions,
-    };
-  } else if (currentInteractions !== null) {
-    const executionID = globalExecutionID++;
-
-    __onInteractionsScheduled(currentInteractions, executionID);
-
-    return {
-      __hasBeenRun: false,
-      __id: executionID,
-      __interactions: currentInteractions,
+      __interactions: interactions,
+      __prevInteractions: null,
     };
   } else {
     return null;
@@ -109,7 +99,12 @@ export function startContinuation(continuation: Continuation | null): void {
   continuation.__hasBeenRun = true;
   currentContinuation = continuation;
 
-  __onInteractionsStarting(continuation.__interactions, continuation.__id);
+  // Continuations should mask (rather than extend) any current interactions.
+  // Upon completion of a continuation, previous interactions will be restored.
+  continuation.__prevInteractions = interactions;
+  interactions = continuation.__interactions;
+
+  __onInteractionsStarting(interactions, continuation.__id);
 }
 
 export function stopContinuation(continuation: Continuation): void {
@@ -129,12 +124,11 @@ export function stopContinuation(continuation: Continuation): void {
   __onInteractionsEnded(continuation.__interactions, continuation.__id);
 
   currentContinuation = null;
+
+  // Restore previous interactions.
+  interactions = continuation.__prevInteractions;
 }
 
-// TODO How should track() behave if a continuation is active?
-// getCurrent() won't reflect the "tracked" value since continuations always mask interactions.
-// Should we not support calling track() when a continuation is active?
-// Should we change the way continuations work, to not mask interactions?
 export function track(name: string, callback: Function): void {
   if (!__PROFILE__) {
     callback();
@@ -147,28 +141,24 @@ export function track(name: string, callback: Function): void {
     timestamp: now(),
   };
 
-  // Tracked interactions should stack.
-  // To do that, create a new zone with a concatenated (cloned) array.
-  let interactions: Interactions | null = currentInteractions;
-  if (interactions === null) {
-    interactions = [interaction];
-  } else {
-    interactions = interactions.concat(interaction);
-  }
-
   const executionID = globalExecutionID++;
-  const prevInteractions = currentInteractions;
-  currentInteractions = interactions;
+  const prevInteractions = interactions;
+
+  // Tracked interactions should stack/accumulate.
+  // To do that, clone the current interactions array.
+  // The previous interactions array will be restored upon completion.
+  interactions =
+    interactions === null ? [interaction] : interactions.concat(interaction);
 
   try {
-    __onInteractionsScheduled(currentInteractions, executionID);
-    __onInteractionsStarting(currentInteractions, executionID);
+    __onInteractionsScheduled(interactions, executionID);
+    __onInteractionsStarting(interactions, executionID);
 
     callback();
   } finally {
-    __onInteractionsEnded(currentInteractions, executionID);
+    __onInteractionsEnded(interactions, executionID);
 
-    currentInteractions = prevInteractions;
+    interactions = prevInteractions;
   }
 }
 
@@ -177,30 +167,27 @@ export function wrap(callback: Function): Function {
     return callback;
   }
 
-  if (currentContinuation === null && currentInteractions === null) {
+  if (interactions === null) {
     return callback;
   }
 
   const executionID = globalExecutionID++;
-  const wrappedInteractions =
-    currentContinuation !== null
-      ? ((currentContinuation.__interactions: any): Interactions)
-      : ((currentInteractions: any): Interactions);
+  const wrappedInteractions = interactions;
 
   __onInteractionsScheduled(wrappedInteractions, executionID);
 
   return (...args) => {
-    const prevInteractions = currentInteractions;
-    currentInteractions = wrappedInteractions;
+    const prevInteractions = interactions;
+    interactions = wrappedInteractions;
 
     try {
-      __onInteractionsStarting(currentInteractions, executionID);
+      __onInteractionsStarting(interactions, executionID);
 
       callback(...args);
     } finally {
-      __onInteractionsEnded(currentInteractions, executionID);
+      __onInteractionsEnded(interactions, executionID);
 
-      currentInteractions = prevInteractions;
+      interactions = prevInteractions;
     }
   };
 }
