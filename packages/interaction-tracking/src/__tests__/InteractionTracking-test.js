@@ -210,6 +210,8 @@ describe('InteractionTracking', () => {
           wrapped();
           expect(callback).toHaveBeenCalled();
         });
+
+        // TODO (bvaughn) Add test that verifies behavior when track() is called from within a continuation.
       });
 
       describe('error handling', () => {
@@ -286,10 +288,10 @@ describe('InteractionTracking', () => {
       });
 
       describe('InteractionInteractionsEmitter lifecycle', () => {
-        let observer;
-        let scheduledCalls;
-        let startingCalls;
-        let endedCalls;
+        let onInteractionsScheduled;
+        let onInteractionsStarting;
+        let onInteractionsEnded;
+
         const firstEvent = {
           id: 0,
           name: 'first',
@@ -300,35 +302,60 @@ describe('InteractionTracking', () => {
           name: 'second',
           timestamp: 0,
         };
+
         beforeEach(() => {
-          observer = {
-            onInteractionsScheduled: jest.fn(),
-            onInteractionsStarting: jest.fn(),
-            onInteractionsEnded: jest.fn(),
-          };
-          scheduledCalls = observer.onInteractionsScheduled.mock.calls;
-          startingCalls = observer.onInteractionsStarting.mock.calls;
-          endedCalls = observer.onInteractionsEnded.mock.calls;
-          InteractionTracking.registerInteractionObserver(observer);
+          onInteractionsScheduled = jest.fn();
+          onInteractionsStarting = jest.fn();
+          onInteractionsEnded = jest.fn();
+
+          InteractionTracking.registerInteractionObserver({
+            onInteractionsScheduled,
+            onInteractionsStarting,
+            onInteractionsEnded,
+          });
         });
 
         it('Calls lifecycle methods for track', () => {
-          expect(scheduledCalls.length).toBe(0);
-          expect(startingCalls.length).toBe(0);
-          expect(endedCalls.length).toBe(0);
+          expect(onInteractionsScheduled).not.toHaveBeenCalled();
+          expect(onInteractionsStarting).not.toHaveBeenCalled();
+          expect(onInteractionsEnded).not.toHaveBeenCalled();
+
           InteractionTracking.track('first', () => {
-            expect(scheduledCalls.length).toBe(1);
-            expect(startingCalls.length).toBe(1);
-            expect(endedCalls.length).toBe(0);
-            expect(scheduledCalls[0]).toEqual([[firstEvent], 0]);
-            expect(startingCalls[0]).toEqual([[firstEvent], 0]);
+            expect(onInteractionsScheduled).toHaveBeenCalledTimes(1);
+            expect(onInteractionsStarting).toHaveBeenCalledTimes(1);
+            expect(onInteractionsEnded).not.toHaveBeenCalled();
+            expect(onInteractionsScheduled).toHaveBeenLastCalledWith(
+              [firstEvent],
+              0,
+            );
+            expect(onInteractionsStarting).toHaveBeenLastCalledWith(
+              [firstEvent],
+              0,
+            );
+
             InteractionTracking.track('second', () => {
-              expect(scheduledCalls[1]).toEqual([[firstEvent, secondEvent], 1]);
-              expect(startingCalls[1]).toEqual([[firstEvent, secondEvent], 1]);
+              expect(onInteractionsScheduled).toHaveBeenCalledTimes(2);
+              expect(onInteractionsStarting).toHaveBeenCalledTimes(2);
+              expect(onInteractionsEnded).not.toHaveBeenCalled();
+              expect(onInteractionsScheduled).toHaveBeenLastCalledWith(
+                [firstEvent, secondEvent],
+                1,
+              );
+              expect(onInteractionsStarting).toHaveBeenLastCalledWith(
+                [firstEvent, secondEvent],
+                1,
+              );
             });
-            expect(endedCalls[0]).toEqual([[firstEvent, secondEvent], 1]);
+
+            expect(onInteractionsEnded).toHaveBeenCalledTimes(1);
+            expect(onInteractionsEnded).toHaveBeenLastCalledWith(
+              [firstEvent, secondEvent],
+              1,
+            );
           });
-          expect(endedCalls[1]).toEqual([[firstEvent], 0]);
+
+          expect(onInteractionsEnded).toHaveBeenCalledTimes(2);
+          expect(onInteractionsEnded).toHaveBeenLastCalledWith([firstEvent], 0);
         });
 
         it('Calls lifecycle methods for wrap', () => {
@@ -336,17 +363,31 @@ describe('InteractionTracking', () => {
           InteractionTracking.track('first', () => {
             InteractionTracking.track('second', () => {
               wrappedFn = InteractionTracking.wrap(fn => fn());
-              expect(scheduledCalls[2]).toEqual([[firstEvent, secondEvent], 2]);
+
+              expect(onInteractionsScheduled).toHaveBeenLastCalledWith(
+                [firstEvent, secondEvent],
+                2,
+              );
             });
           });
-          expect(startingCalls.length).toBe(2);
-          expect(endedCalls.length).toBe(2);
+
+          expect(onInteractionsStarting).toHaveBeenCalledTimes(2);
+          expect(onInteractionsEnded).toHaveBeenCalledTimes(2);
+
           wrappedFn(() => {
-            expect(startingCalls.length).toBe(3);
-            expect(startingCalls[2]).toEqual([[firstEvent, secondEvent], 2]);
-            expect(endedCalls.length).toBe(2);
+            expect(onInteractionsStarting).toHaveBeenCalledTimes(3);
+            expect(onInteractionsStarting).toHaveBeenLastCalledWith(
+              [firstEvent, secondEvent],
+              2,
+            );
+            expect(onInteractionsEnded).toHaveBeenCalledTimes(2);
           });
-          expect(endedCalls[2]).toEqual([[firstEvent, secondEvent], 2]);
+
+          expect(onInteractionsEnded).toHaveBeenCalledTimes(3);
+          expect(onInteractionsEnded).toHaveBeenLastCalledWith(
+            [firstEvent, secondEvent],
+            2,
+          );
         });
 
         it('Calls lifecycle methods for start/stop continuation', () => {
@@ -356,21 +397,30 @@ describe('InteractionTracking', () => {
               settableContext = InteractionTracking.reserveContinuation();
             });
           });
-          expect(startingCalls.length).toBe(2);
-          expect(endedCalls.length).toBe(2);
+          expect(onInteractionsStarting).toHaveBeenCalledTimes(2);
+          expect(onInteractionsEnded).toHaveBeenCalledTimes(2);
 
-          expect(scheduledCalls.length).toBe(3);
-          expect(scheduledCalls[2]).toEqual([[firstEvent, secondEvent], 2]);
+          expect(onInteractionsScheduled.mock.calls.length).toBe(3);
+          expect(onInteractionsScheduled).toHaveBeenLastCalledWith(
+            [firstEvent, secondEvent],
+            2,
+          );
 
           InteractionTracking.startContinuation(settableContext);
-          expect(startingCalls.length).toBe(3);
-          expect(endedCalls.length).toBe(2);
+          expect(onInteractionsStarting).toHaveBeenCalledTimes(3);
+          expect(onInteractionsEnded).toHaveBeenCalledTimes(2);
 
           InteractionTracking.stopContinuation(settableContext);
-          expect(endedCalls.length).toBe(3);
+          expect(onInteractionsEnded).toHaveBeenCalledTimes(3);
 
-          expect(startingCalls[2]).toEqual([[firstEvent, secondEvent], 2]);
-          expect(endedCalls[2]).toEqual([[firstEvent, secondEvent], 2]);
+          expect(onInteractionsStarting).toHaveBeenLastCalledWith(
+            [firstEvent, secondEvent],
+            2,
+          );
+          expect(onInteractionsEnded).toHaveBeenLastCalledWith(
+            [firstEvent, secondEvent],
+            2,
+          );
         });
       });
     });
